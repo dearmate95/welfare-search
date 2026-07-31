@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>복지사례 문서검색</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --line:#e3e6ea; --text:#1d2129; --muted:#6b7684;
+    --brand:#1f6feb; --brand-soft:#e8f0fe; --hit:#fff3bf; --hit-line:#f0c000;
+    --ok:#137333; --warn:#b54708; --danger:#c62828; --shadow:0 1px 3px rgba(0,0,0,.07);
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15181d; --panel:#1d2127; --line:#2e343d; --text:#e6e8eb; --muted:#9aa4b2;
+      --brand:#5b9dff; --brand-soft:#1b2b45; --hit:#5c4a00; --hit-line:#c9a227;
+      --ok:#5bbd7a; --warn:#e0a458; --danger:#ef7a7a; --shadow:none;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","맑은 고딕",
+                   "Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+       font-size:14px;line-height:1.6}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 18px;
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
+  h1 small{font-weight:400;color:var(--muted);font-size:11px;margin-left:6px}
+  nav{display:flex;gap:4px;margin-left:6px;flex-wrap:wrap}
+  nav button{background:none;border:1px solid transparent;padding:6px 14px;border-radius:8px;
+             cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:600}
+  nav button:hover{background:var(--bg)}
+  nav button.on{background:var(--brand-soft);color:var(--brand);border-color:transparent}
+  .grow{flex:1}
+  .chip{font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--line);
+        padding:4px 10px;border-radius:99px;white-space:nowrap}
+  .chip b{color:var(--text)}
+  main{padding:18px;max-width:1180px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .card h2{font-size:14px;margin:0 0 12px;font-weight:700}
+  .card h2 span{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input[type=text],input[type=date],select{background:var(--bg);color:var(--text);
+      border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:14px;
+      font-family:inherit;outline:none}
+  input[type=text]:focus,select:focus{border-color:var(--brand)}
+  .search-box{flex:1;min-width:240px;font-size:15px!important;padding:12px 14px!important}
+  button.btn{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 18px;
+             font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+  button.btn:hover{filter:brightness(1.08)}
+  button.btn:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:var(--panel);color:var(--text);border:1px solid var(--line)}
+  button.small{padding:5px 10px;font-size:12px;font-weight:500}
+  button.link{background:none;border:none;color:var(--brand);cursor:pointer;padding:2px 4px;
+              font-size:12.5px;font-family:inherit}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:8px}
+  .hint code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 6px;
+             font-size:12px;margin-right:2px}
+  .result{border-top:1px solid var(--line);padding:13px 4px;cursor:pointer}
+  .result:first-of-type{border-top:none}
+  .result:hover{background:var(--bg)}
+  .result .title{font-weight:600;font-size:14.5px;color:var(--brand);word-break:break-all}
+  .result .meta{color:var(--muted);font-size:12px;margin-top:3px;word-break:break-all}
+  .snip{margin-top:6px;font-size:13px;color:var(--text);opacity:.9;word-break:break-all}
+  .snip div{margin-top:3px}
+  mark{background:var(--hit);color:inherit;border-bottom:1.5px solid var(--hit-line);
+       border-radius:2px;padding:0 1px;font-weight:600}
+  .badge{display:inline-block;background:var(--brand-soft);color:var(--brand);border-radius:5px;
+         padding:1px 7px;font-size:11.5px;font-weight:600;margin-right:6px;vertical-align:1px}
+  .badge.gray{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+  .facets{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+  .facets button{background:var(--bg);border:1px solid var(--line);color:var(--muted);
+                 border-radius:99px;padding:4px 11px;font-size:12px;cursor:pointer;font-family:inherit}
+  .facets button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .stat .n{font-size:22px;font-weight:700;letter-spacing:-.5px}
+  .stat .l{color:var(--muted);font-size:12px}
+  .bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;background:var(--brand)}
+  .barA i{background:#1f6feb}.barB i{background:#e8590c}
+  .kw{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--line);
+      border-radius:99px;padding:4px 11px;margin:0 5px 6px 0;font-size:12.5px;cursor:pointer}
+  .kw b{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+  .kw:hover{border-color:var(--brand);color:var(--brand)}
+  .check{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .check .mark{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+               font-size:12px;font-weight:700;color:#fff;flex:none}
+  .mark.y{background:var(--ok)} .mark.n{background:var(--danger)}
+  .months{display:flex;gap:3px;align-items:flex-end;height:72px;margin-top:8px;overflow-x:auto;padding-bottom:2px}
+  .months div{flex:none;width:26px;text-align:center}
+  .months i{display:block;background:var(--brand);border-radius:3px 3px 0 0;min-height:2px}
+  .months span{font-size:9.5px;color:var(--muted);display:block;margin-top:3px;
+               writing-mode:vertical-rl;white-space:nowrap}
+  .folders li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+  ul.plain{list-style:none;padding:0;margin:0}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:50;padding:24px}
+  .modal.on{display:flex;align-items:center;justify-content:center}
+  .modal .inner{background:var(--panel);border-radius:12px;max-width:920px;width:100%;
+                max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal .head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
+               align-items:center;gap:10px}
+  .modal .body{padding:16px 18px;overflow:auto;white-space:pre-wrap;font-size:13.5px;
+               line-height:1.75;word-break:break-all}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#222;color:#fff;
+         padding:11px 18px;border-radius:8px;font-size:13.5px;z-index:99;opacity:0;
+         transition:opacity .2s;pointer-events:none;max-width:90vw}
+  .toast.on{opacity:.95}
+  .empty{color:var(--muted);text-align:center;padding:34px 10px;font-size:13.5px}
+  .warn{background:#fff8e6;border:1px solid #f0c000;color:#7a5c00;border-radius:8px;
+        padding:10px 13px;font-size:12.5px;margin-bottom:12px}
+  @media (prefers-color-scheme: dark){.warn{background:#3a2f0b;border-color:#7a6412;color:#f0d68a}}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+           border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>복지사례 문서검색<small>v__VERSION__</small></h1>
+  <nav>
+    <button data-tab="search" class="on">검색</button>
+    <button data-tab="profile">이용인 분석</button>
+    <button data-tab="compare">비교분석</button>
+    <button data-tab="setup">폴더·색인</button>
+  </nav>
+  <div class="grow"></div>
+  <div class="chip" id="statusChip">준비 중…</div>
+</header>
+
+<main>
+  <!-- ============================ 검색 ============================ -->
+  <section id="tab-search">
+    <div class="card">
+      <div class="row">
+        <input type="text" id="q" class="search-box" autofocus
+               placeholder="이용인 이름, 사례관리록, 초기상담 … 찾을 단어를 입력하세요">
+        <button class="btn" id="btnSearch">검색</button>
+      </div>
+      <div class="row" style="margin-top:9px">
+        <select id="sort">
+          <option value="score">관련도순</option>
+          <option value="date">최신순</option>
+          <option value="hits">일치 많은 순</option>
+          <option value="name">이름순</option>
+        </select>
+        <select id="extFilter"><option value="">모든 파일형식</option></select>
+        <select id="typeFilter"><option value="">모든 서식유형</option></select>
+        <button class="btn ghost small" id="btnExport">결과 CSV 저장</button>
+        <span class="grow"></span>
+        <span class="chip" id="searchInfo"></span>
+      </div>
+      <div class="hint">
+        <code>홍길동 상담</code> 두 단어 모두 포함 ·
+        <code>"초기 상담"</code> 정확히 이 문구 ·
+        <code>홍길동 -종결</code> 종결 제외 ·
+        <code>홍길동 | 김영희</code> 둘 중 하나
+      </div>
+    </div>
+    <div class="card" id="results"><div class="empty">검색어를 입력해 주세요.</div></div>
+  </section>
+
+  <!-- ========================= 이용인 분석 ========================= -->
+  <section id="tab-profile" hidden>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="pq" class="search-box" placeholder="이용인 이름을 입력하세요 (예: 홍길동)">
+        <button class="btn" id="btnProfile">분석</button>
+        <button class="btn ghost" id="btnProfileCsv">CSV 저장</button>
+      </div>
+      <div class="hint">해당 이름이 들어간 모든 문서를 모아 기록 현황·주요 키워드·빠진 서식을 정리합니다.</div>
+    </div>
+    <div id="profileOut"></div>
+  </section>
+
+  <!-- ========================== 비교분석 ========================== -->
+  <section id="tab-compare" hidden>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="ca" class="search-box" placeholder="비교 대상 A (예: 홍길동)">
+        <input type="text" id="cb" class="search-box" placeholder="비교 대상 B (예: 김영희)">
+        <button class="btn" id="btnCompare">비교</button>
+      </div>
+      <div class="hint">두 이용인(또는 두 단어)의 기록에 나타나는 키워드를 견줘 봅니다.
+        공통점과 각자에게만 두드러진 특징을 보여줍니다.</div>
+    </div>
+    <div id="compareOut"></div>
+  </section>
+
+  <!-- ========================= 폴더·색인 ========================== -->
+  <section id="tab-setup" hidden>
+    <div class="card">
+      <h2>1. 검색할 폴더 <span>이 폴더 안의 문서를 찾아 목록으로 만들어 둡니다</span></h2>
+      <ul class="plain folders" id="rootList"></ul>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="btnPick">＋ 폴더 추가</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. 색인 만들기 <span>처음 한 번 오래 걸리고, 이후에는 바뀐 파일만 빠르게 갱신합니다</span></h2>
+      <div class="row">
+        <button class="btn" id="btnIndex">색인 시작 / 갱신</button>
+        <button class="btn ghost" id="btnFull">전체 다시 만들기</button>
+        <button class="btn ghost" id="btnStop" disabled>중지</button>
+        <span class="grow"></span>
+        <button class="link" id="btnReset">색인 완전 삭제</button>
+      </div>
+      <div id="indexProgress" style="margin-top:12px"></div>
+      <div id="indexStats" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>3. 찾을 파일 형식</h2>
+      <div id="extList" class="row"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost small" id="btnSaveExt">파일 형식 저장</button>
+        <span class="hint" style="margin:0">체크를 바꾼 뒤 저장하고 색인을 다시 만들면 반영됩니다.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>개인정보 보호 안내</h2>
+      <div class="hint">
+        • 이 프로그램은 <b>내 컴퓨터 안에서만</b> 동작하며, 어떤 자료도 인터넷으로 보내지 않습니다.<br>
+        • 색인 파일에는 문서 본문이 담깁니다. 저장 위치: <code id="dbPath"></code><br>
+        • 공용 PC에서 쓴다면 사용 후 <b>색인 완전 삭제</b>를 눌러 주세요.<br>
+        • 사례관리 기록은 민감정보이므로 화면 공유·출력물 관리에 유의해 주세요.
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 문서 미리보기 -->
+<div class="modal" id="viewer">
+  <div class="inner">
+    <div class="head">
+      <b id="vTitle" style="flex:1;word-break:break-all"></b>
+      <button class="btn small" id="vOpen">파일 열기</button>
+      <button class="btn ghost small" id="vFolder">폴더 열기</button>
+      <button class="btn ghost small" id="vClose">닫기</button>
+    </div>
+    <div class="body" id="vBody"></div>
+  </div>
+</div>
+
+<!-- 폴더 고르기 -->
+<div class="modal" id="picker">
+  <div class="inner" style="max-width:620px">
+    <div class="head">
+      <b style="flex:1">폴더 선택</b>
+      <button class="btn small" id="pkChoose">이 폴더 선택</button>
+      <button class="btn ghost small" id="pkClose">취소</button>
+    </div>
+    <div style="padding:10px 18px;border-bottom:1px solid var(--line);color:var(--muted);
+                font-size:12.5px;word-break:break-all" id="pkPath"></div>
+    <div class="body" style="white-space:normal;padding:6px 18px 16px">
+      <ul class="plain" id="pkList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $  = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+let STATE = null, LAST = null, POLL = null, PICK_PATH = "";
+
+/* ---------- 공통 ---------- */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"), 2600); }
+async function api(path, opts={}){
+  const o = Object.assign({headers:{"X-Token":TOKEN,"Content-Type":"application/json"}}, opts);
+  const r = await fetch(path, o);
+  const d = await r.json().catch(()=>({error:"응답을 읽을 수 없습니다."}));
+  if(d && d.error) toast(d.error);
+  return d;
+}
+function post(path, body){ return api(path,{method:"POST",body:JSON.stringify(body||{})}); }
+function num(n){ return (n||0).toLocaleString("ko-KR"); }
+function bytes(n){ if(!n) return "0B"; const u=["B","KB","MB","GB"]; let i=0;
+  while(n>=1024&&i<u.length-1){n/=1024;i++;} return n.toFixed(i?1:0)+u[i]; }
+
+/* ---------- 탭 ---------- */
+$$("nav button").forEach(b => b.onclick = () => {
+  $$("nav button").forEach(x=>x.classList.toggle("on", x===b));
+  ["search","profile","compare","setup"].forEach(t =>
+    $("#tab-"+t).hidden = (t !== b.dataset.tab));
+  if(b.dataset.tab==="setup") refreshState();
+});
+
+/* ---------- 상태 ---------- */
+async function refreshState(){
+  STATE = await api("/api/state?t="+TOKEN);
+  if(!STATE || STATE.error) return;
+  const s = STATE.stats, p = STATE.progress;
+  $("#statusChip").innerHTML = p.running
+    ? `<span class="spinner"></span> 색인 중 ${p.done}/${p.total}`
+    : `문서 <b>${num(s.ok)}</b>건 색인됨`;
+  $("#dbPath").textContent = STATE.config.db_path;
+  renderRoots(); renderExts(); renderProgress(); renderStats();
+  if(p.running && !POLL) POLL = setInterval(pollIndex, 900);
+}
+async function pollIndex(){
+  const p = await api("/api/index/status?t="+TOKEN);
+  STATE.progress = p; renderProgress();
+  $("#statusChip").innerHTML = p.running
+    ? `<span class="spinner"></span> 색인 중 ${p.done}/${p.total}` : "색인 완료";
+  if(!p.running){ clearInterval(POLL); POLL=null; refreshState();
+    toast(p.phase==="완료" ? `색인 완료 — 새 문서 ${p.added}건, 갱신 ${p.updated}건` : "색인 "+p.phase); }
+}
+function renderProgress(){
+  const p = STATE.progress, el = $("#indexProgress");
+  $("#btnStop").disabled = !p.running;
+  $("#btnIndex").disabled = p.running;
+  $("#btnFull").disabled = p.running;
+  if(!p.started_at){ el.innerHTML = `<div class="hint">아직 색인을 만들지 않았습니다.</div>`; return; }
+  const pct = p.percent||0;
+  el.innerHTML = `
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="hint">${esc(p.phase)} · ${num(p.done)}/${num(p.total)} (${pct}%)
+      · 새 문서 ${num(p.added)} · 갱신 ${num(p.updated)} · 건너뜀 ${num(p.skipped)}
+      · 실패 ${num(p.failed)} · ${p.elapsed}초 ${p.current?"· "+esc(p.current):""}</div>
+    ${p.error?`<div class="warn" style="margin-top:8px">${esc(p.error)}</div>`:""}
+    ${p.recent_errors && p.recent_errors.length
+      ? `<details style="margin-top:8px"><summary class="hint" style="cursor:pointer">
+           읽지 못한 파일 ${p.recent_errors.length}건 보기</summary>
+         <div class="hint">${p.recent_errors.map(esc).join("<br>")}</div></details>` : ""}`;
+}
+function renderStats(){
+  const s = STATE.stats;
+  const probs = (s.problems||[]).map(x=>`${x.status} ${num(x.c)}`).join(" · ");
+  $("#indexStats").innerHTML = `
+    <div class="grid3">
+      <div class="stat"><div class="n">${num(s.ok)}</div><div class="l">검색 가능한 문서</div></div>
+      <div class="stat"><div class="n">${num(s.total)}</div><div class="l">전체 파일</div></div>
+      <div class="stat"><div class="n">${num(Math.round((s.chars||0)/10000))}만</div>
+           <div class="l">색인된 글자 수</div></div>
+    </div>
+    <div class="hint">파일형식: ${(s.by_ext||[]).map(e=>`${e.ext||"?"} ${num(e.c)}`).join(" · ")||"-"}
+      ${probs?`<br>처리 못한 파일: ${probs}`:""}
+      ${STATE.pdf_ok?"":`<br>PDF 본문을 읽으려면 <code>pip install pypdf</code> 를 실행하세요.`}</div>`;
+}
+function renderRoots(){
+  const list = STATE.config.roots || [];
+  $("#rootList").innerHTML = list.length ? list.map((r,i)=>`
+    <li><span style="flex:1;word-break:break-all">${esc(r)}</span>
+        <button class="link" data-rm="${i}">삭제</button></li>`).join("")
+    : `<li><span class="hint">폴더를 추가해 주세요. 보통 문서가 모여 있는 상위 폴더 하나면 충분합니다.</span></li>`;
+  $$("#rootList [data-rm]").forEach(b => b.onclick = async () => {
+    const roots = STATE.config.roots.filter((_,i)=>i!=b.dataset.rm);
+    await post("/api/config",{roots}); refreshState();
+  });
+}
+function renderExts(){
+  const cur = new Set(STATE.config.extensions||[]);
+  $("#extList").innerHTML = Object.entries(STATE.supported).map(([e,label])=>`
+    <label class="kw" style="cursor:pointer">
+      <input type="checkbox" value="${e}" ${cur.has(e)?"checked":""}> ${e} <b>${esc(label)}</b>
+    </label>`).join("");
+}
+
+/* ---------- 검색 ---------- */
+async function doSearch(reset=true){
+  const q = $("#q").value.trim();
+  if(!q){ $("#results").innerHTML = `<div class="empty">검색어를 입력해 주세요.</div>`; return; }
+  $("#results").innerHTML = `<div class="empty"><span class="spinner"></span> 찾는 중…</div>`;
+  const p = new URLSearchParams({t:TOKEN, q, sort:$("#sort").value,
+      ext:$("#extFilter").value, doc_type:$("#typeFilter").value, limit:"100"});
+  const d = await api("/api/search?"+p);
+  LAST = d; renderResults(d, reset);
+}
+function renderResults(d, resetFilters){
+  $("#searchInfo").innerHTML = `${num(d.total)}건 · ${d.elapsed}초`;
+  if(resetFilters && d.facets){
+    fillSelect("#extFilter","모든 파일형식", d.facets.ext);
+    fillSelect("#typeFilter","모든 서식유형", d.facets.doc_type);
+  }
+  if(!d.results || !d.results.length){
+    $("#results").innerHTML = `<div class="empty">${esc(d.message||"결과가 없습니다.")}<br>
+      <span class="hint">이름 일부만 넣거나, 띄어쓰기를 빼고 다시 찾아보세요.</span></div>`;
+    return;
+  }
+  $("#results").innerHTML = d.results.map(r => `
+    <div class="result" data-id="${r.id}">
+      <div class="title">${esc(r.name)}</div>
+      <div class="meta">
+        ${r.doc_type?`<span class="badge">${esc(r.doc_type)}</span>`:""}
+        <span class="badge gray">${esc(r.ext||"")}</span>
+        ${esc(r.mtime_text)} · ${bytes(r.size)} · 본문 ${num(r.hits)}회 일치<br>${esc(r.folder)}
+      </div>
+      <div class="snip">${(r.snippets||[]).map(sn =>
+        `<div>${sn.map(([t,h]) => h?`<mark>${esc(t)}</mark>`:esc(t)).join("")}</div>`).join("")}</div>
+      <div style="margin-top:6px">
+        <button class="link" data-open="${r.id}">파일 열기</button>
+        <button class="link" data-folder="${r.id}">폴더 열기</button>
+        <button class="link" data-view="${r.id}">내용 미리보기</button>
+      </div>
+    </div>`).join("");
+
+  const byId = Object.fromEntries(d.results.map(r=>[r.id, r]));
+  $$("#results [data-open]").forEach(b => b.onclick = e => {
+    e.stopPropagation(); post("/api/open",{path:byId[b.dataset.open].path}); });
+  $$("#results [data-folder]").forEach(b => b.onclick = e => {
+    e.stopPropagation(); post("/api/open",{path:byId[b.dataset.folder].path, folder:true}); });
+  $$("#results [data-view]").forEach(b => b.onclick = e => {
+    e.stopPropagation(); openViewer(b.dataset.view); });
+  $$("#results .result").forEach(el => el.onclick = () => openViewer(el.dataset.id));
+}
+function fillSelect(sel, allLabel, pairs){
+  const el = $(sel), keep = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>` +
+    (pairs||[]).map(([k,c])=>`<option value="${esc(k)}">${esc(k)} (${c})</option>`).join("");
+  el.value = keep;
+}
+
+/* ---------- 미리보기 ---------- */
+async function openViewer(id){
+  const d = await api(`/api/file?t=${TOKEN}&id=${id}&q=${encodeURIComponent($("#q").value)}`);
+  if(!d || d.error) return;
+  $("#vTitle").textContent = d.name;
+  let body = esc(d.body || "");
+  (d.terms||[]).forEach(t => {
+    if(!t) return;
+    const re = new RegExp(esc(t).replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+    body = body.replace(re, m => `<mark>${m}</mark>`);
+  });
+  const info = `<div class="hint" style="margin-bottom:10px">${esc(d.path)}<br>
+      수정일 ${esc(d.mtime_text)} · ${esc(d.doc_type||"")}
+      ${d.note?`<br><b>${esc(d.note)}</b>`:""}
+      ${d.exists?"":"<br><b>※ 파일이 원래 위치에 없습니다.</b>"}</div>`;
+  $("#vBody").innerHTML = info + (body || "<i>본문이 비어 있습니다.</i>");
+  $("#viewer").classList.add("on");
+  $("#vOpen").onclick = () => post("/api/open",{path:d.path});
+  $("#vFolder").onclick = () => post("/api/open",{path:d.path, folder:true});
+}
+$("#vClose").onclick = () => $("#viewer").classList.remove("on");
+$("#viewer").onclick = e => { if(e.target.id==="viewer") $("#viewer").classList.remove("on"); };
+document.addEventListener("keydown", e => { if(e.key==="Escape"){
+  $("#viewer").classList.remove("on"); $("#picker").classList.remove("on"); }});
+
+/* ---------- 이용인 분석 ---------- */
+/* labelHtml 은 이미 escape 된 HTML 이어야 한다. */
+function barRow(labelHtml, value, max, extra=""){
+  const w = max? Math.round(100*value/max) : 0;
+  return `<tr><td>${labelHtml}</td><td style="width:55%">
+    <div class="bar"><i style="width:${w}%"></i></div></td>
+    <td class="num">${num(value)}${extra}</td></tr>`;
+}
+async function doProfile(){
+  const q = $("#pq").value.trim();
+  if(!q){ toast("이용인 이름을 입력해 주세요."); return; }
+  $("#profileOut").innerHTML = `<div class="card"><div class="empty">
+      <span class="spinner"></span> 문서를 모아 분석하는 중…</div></div>`;
+  const d = await api("/api/profile?t="+TOKEN+"&q="+encodeURIComponent(q));
+  if(!d || d.doc_count===0){
+    $("#profileOut").innerHTML = `<div class="card"><div class="empty">
+      ${esc(d.message||"관련 문서를 찾지 못했습니다.")}</div></div>`; return; }
+
+  const maxKw = Math.max(...d.keywords.map(k=>k.count), 1);
+  const maxCat = Math.max(...d.categories.map(c=>c[1]), 1);
+  const maxMon = Math.max(...d.months.map(m=>m[1]), 1);
+  const done = d.checklist.filter(c=>c.ok).length;
+
+  $("#profileOut").innerHTML = `
+  <div class="card">
+    <h2>${esc(d.query)} 기록 요약</h2>
+    <div class="grid3">
+      <div class="stat"><div class="n">${num(d.doc_count)}</div><div class="l">관련 문서</div></div>
+      <div class="stat"><div class="n" style="font-size:15px">${esc(d.first_date)} ~ ${esc(d.last_date)}</div>
+           <div class="l">기록 기간 (${esc(d.date_source||"")})</div></div>
+      <div class="stat"><div class="n">${done}/${d.checklist.length}</div><div class="l">필수 서식 확보</div></div>
+    </div>
+    ${d.gaps && d.gaps.length ? `<div class="warn" style="margin-top:12px">
+      기록이 비어 있는 구간: ${d.gaps.map(g=>`${esc(g.from)} → ${esc(g.to)} (${g.months}개월)`).join(", ")}</div>`:""}
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>필수 서식 점검 <span>파일명·본문을 근거로 추정</span></h2>
+      ${d.checklist.map(c=>`<div class="check">
+        <div class="mark ${c.ok?"y":"n"}">${c.ok?"✓":"!"}</div>
+        <div style="flex:1"><b>${esc(c.form)}</b>
+          <div class="hint" style="margin:0">${c.ok
+            ? esc(c.examples.map(e=>e.name).join(", ")) : "확인되지 않음"}</div></div></div>`).join("")}
+      <div class="hint">※ 자동 추정이므로 실제 서식 유무는 확인이 필요합니다.</div>
+    </div>
+    <div class="card">
+      <h2>기록 시기별 분포</h2>
+      <div class="months">${d.months.map(([m,c])=>`
+        <div><i style="height:${Math.round(60*c/maxMon)}px"></i><span>${esc(m)}</span></div>`).join("")}</div>
+      <h2 style="margin-top:18px">영역별 비중</h2>
+      <table>${d.categories.map(c=>barRow(esc(c[0]), c[1], maxCat)).join("")}</table>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>주요 키워드 <span>눌러서 바로 검색</span></h2>
+      <table>${d.keywords.slice(0,20).map(k=>barRow(
+          `<span class="kw" data-q="${esc(k.term)}" style="margin:0">${esc(k.term)}</span>`
+          + (k.category?` <span class="badge gray">${esc(k.category)}</span>`:""),
+          k.count, maxKw, ` <span class="hint">${k.docs}건</span>`)).join("")}</table>
+    </div>
+    <div class="card">
+      <h2>함께 나오는 이름·기관</h2>
+      <div>${d.people.length? d.people.map(p=>`<span class="kw" data-q="${esc(p.name)}">
+            ${esc(p.name)} <b>${p.count}</b></span>`).join("") : `<span class="hint">없음</span>`}</div>
+      <h2 style="margin-top:16px">연계 기관</h2>
+      <div>${d.orgs.length? d.orgs.map(o=>`<span class="kw" data-q="${esc(o.name)}">
+            ${esc(o.name)} <b>${o.count}</b></span>`).join("") : `<span class="hint">없음</span>`}</div>
+      <h2 style="margin-top:16px">서식 유형</h2>
+      <div>${d.doc_types.map(t=>`<span class="kw">${esc(t[0])} <b>${t[1]}</b></span>`).join("")}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>관련 문서 ${num(d.doc_count)}건</h2>
+    <table><thead><tr><th>파일명</th><th>서식</th><th>수정일</th><th></th></tr></thead><tbody>
+    ${d.documents.map(f=>`<tr>
+      <td style="word-break:break-all">${esc(f.name)}</td>
+      <td>${esc(f.doc_type)}</td><td>${esc(f.date)}</td>
+      <td class="num"><button class="link" data-view2="${f.id}">보기</button>
+          <button class="link" data-open2="${esc(f.path)}">열기</button></td></tr>`).join("")}
+    </tbody></table>
+  </div>`;
+
+  $$("#profileOut [data-q]").forEach(el => el.onclick = () => {
+    $("#q").value = el.dataset.q; $$("nav button")[0].click(); doSearch(); });
+  $$("#profileOut [data-view2]").forEach(b => b.onclick = () => openViewer(b.dataset.view2));
+  $$("#profileOut [data-open2]").forEach(b => b.onclick = () => post("/api/open",{path:b.dataset.open2}));
+}
+
+/* ---------- 비교분석 ---------- */
+async function doCompare(){
+  const a = $("#ca").value.trim(), b = $("#cb").value.trim();
+  if(!a || !b){ toast("비교할 두 대상을 모두 입력해 주세요."); return; }
+  $("#compareOut").innerHTML = `<div class="card"><div class="empty">
+      <span class="spinner"></span> 비교하는 중…</div></div>`;
+  const d = await api(`/api/compare?t=${TOKEN}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+  if(!d || d.error) return;
+  const rows = (arr, key) => arr.length ? arr.map(k=>`<tr>
+      <td>${esc(k.term)} ${k.category?`<span class="badge gray">${esc(k.category)}</span>`:""}</td>
+      <td class="num">${num(k.a)}</td><td class="num">${num(k.b)}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="hint">해당 없음</td></tr>`;
+
+  $("#compareOut").innerHTML = `
+  <div class="card">
+    <h2>비교 개요</h2>
+    <div class="grid2">
+      <div class="stat"><div class="n">${num(d.a.doc_count)}</div><div class="l">A · ${esc(d.a.query)} 문서</div></div>
+      <div class="stat"><div class="n">${num(d.b.doc_count)}</div><div class="l">B · ${esc(d.b.query)} 문서</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>영역별 비중 비교 <span>파랑 A · 주황 B (각자 기록 내 비율 %)</span></h2>
+    <table><thead><tr><th>영역</th><th>A ${esc(d.a.query)}</th><th>B ${esc(d.b.query)}</th></tr></thead><tbody>
+    ${d.categories.map(c=>`<tr><td>${esc(c.category)}</td>
+      <td><div class="bar barA"><i style="width:${c.a_pct}%"></i></div>
+          <span class="hint">${c.a_pct}%</span></td>
+      <td><div class="bar barB"><i style="width:${c.b_pct}%"></i></div>
+          <span class="hint">${c.b_pct}%</span></td></tr>`).join("")}
+    </tbody></table>
+  </div>
+  <div class="grid3">
+    <div class="card"><h2>공통 키워드</h2>
+      <table><thead><tr><th>단어</th><th>A</th><th>B</th></tr></thead>
+      <tbody>${rows(d.common)}</tbody></table></div>
+    <div class="card"><h2>A에서 두드러진 특징 <span>${esc(d.a.query)}</span></h2>
+      <table><thead><tr><th>단어</th><th>A</th><th>B</th></tr></thead>
+      <tbody>${rows(d.only_a)}</tbody></table></div>
+    <div class="card"><h2>B에서 두드러진 특징 <span>${esc(d.b.query)}</span></h2>
+      <table><thead><tr><th>단어</th><th>A</th><th>B</th></tr></thead>
+      <tbody>${rows(d.only_b)}</tbody></table></div>
+  </div>`;
+}
+
+/* ---------- 폴더 고르기 ---------- */
+async function openPicker(start){
+  const d = await api("/api/browse?t="+TOKEN+"&path="+encodeURIComponent(start||""));
+  PICK_PATH = d.path;
+  $("#pkPath").textContent = d.path;
+  const drives = (d.drives||[]).map(x=>`<li><button class="link" data-go="${esc(x)}">💽 ${esc(x)}</button></li>`).join("");
+  $("#pkList").innerHTML =
+    `<li><button class="link" data-go="${esc(d.parent)}">⬆ 상위 폴더</button></li>` + drives +
+    (d.items.map(it=>`<li><button class="link" data-go="${esc(it.path)}">📁 ${esc(it.name)}</button></li>`).join("")
+      || `<li class="hint">하위 폴더가 없습니다.</li>`);
+  $$("#pkList [data-go]").forEach(b => b.onclick = () => openPicker(b.dataset.go));
+  $("#picker").classList.add("on");
+}
+$("#pkClose").onclick = () => $("#picker").classList.remove("on");
+$("#pkChoose").onclick = async () => {
+  const roots = Array.from(new Set([...(STATE.config.roots||[]), PICK_PATH]));
+  await post("/api/config",{roots});
+  $("#picker").classList.remove("on");
+  await refreshState();
+  toast("폴더를 추가했습니다. ‘색인 시작’을 눌러 주세요.");
+};
+
+/* ---------- 이벤트 ---------- */
+$("#btnSearch").onclick = () => doSearch();
+$("#q").addEventListener("keydown", e => { if(e.key==="Enter") doSearch(); });
+$("#sort").onchange = () => doSearch(false);
+$("#extFilter").onchange = () => doSearch(false);
+$("#typeFilter").onchange = () => doSearch(false);
+$("#btnExport").onclick = () => {
+  const q = $("#q").value.trim(); if(!q){ toast("먼저 검색해 주세요."); return; }
+  location.href = `/api/export?t=${TOKEN}&kind=search&q=${encodeURIComponent(q)}`; };
+$("#btnProfile").onclick = doProfile;
+$("#pq").addEventListener("keydown", e => { if(e.key==="Enter") doProfile(); });
+$("#btnProfileCsv").onclick = () => {
+  const q = $("#pq").value.trim(); if(!q){ toast("이름을 입력해 주세요."); return; }
+  location.href = `/api/export?t=${TOKEN}&kind=profile&q=${encodeURIComponent(q)}`; };
+$("#btnCompare").onclick = doCompare;
+$("#cb").addEventListener("keydown", e => { if(e.key==="Enter") doCompare(); });
+$("#btnPick").onclick = () => openPicker(STATE && STATE.home);
+$("#btnIndex").onclick = async () => { await post("/api/index/start",{}); refreshState();
+  if(!POLL) POLL = setInterval(pollIndex, 900); };
+$("#btnFull").onclick = async () => {
+  if(!confirm("모든 파일을 처음부터 다시 읽습니다. 시간이 오래 걸릴 수 있습니다. 계속할까요?")) return;
+  await post("/api/index/start",{full:true}); refreshState();
+  if(!POLL) POLL = setInterval(pollIndex, 900); };
+$("#btnStop").onclick = () => post("/api/index/stop",{});
+$("#btnReset").onclick = async () => {
+  if(!confirm("색인을 완전히 삭제합니다. 원본 문서는 지워지지 않습니다. 계속할까요?")) return;
+  await post("/api/index/reset",{}); refreshState(); toast("색인을 삭제했습니다."); };
+$("#btnSaveExt").onclick = async () => {
+  const exts = $$("#extList input:checked").map(i=>i.value);
+  await post("/api/config",{extensions:exts}); toast("저장했습니다."); refreshState(); };
+
+refreshState().then(() => {
+  if(STATE && STATE.stats && !STATE.stats.total) $$("nav button")[3].click();
+});
+</script>
+</body>
+</html>

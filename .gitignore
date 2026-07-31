@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 색인 데이터베이스와 개인 설정 (개인정보가 담길 수 있으므로 절대 올리지 않는다)
+*.db
+*.db-wal
+*.db-shm
+config.json
+.welfare_search/
+_samples/
