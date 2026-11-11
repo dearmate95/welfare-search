@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "welfare-search-tools": {
+      "source": {
+        "source": "github",
+        "repo": "dearmate95/welfare-search"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "usage-bar@welfare-search-tools": true
+  }
+}
