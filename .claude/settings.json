@@ -3,8 +3,7 @@
     "welfare-search-tools": {
       "source": {
         "source": "github",
-        "repo": "dearmate95/welfare-search",
-        "ref": "ccr-059c9907-vd6o61"
+        "repo": "dearmate95/welfare-search"
       }
     }
   },
