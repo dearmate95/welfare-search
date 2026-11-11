@@ -1,0 +1,7 @@
+{
+  "name": "welfare-search-tools",
+  "owner": { "name": "welfare-search" },
+  "plugins": [
+    { "name": "usage-bar", "source": "./plugins/usage-bar", "description": "입력창 위에 사용량 한도와 예상 크레딧 비용을 막대로 표시" }
+  ]
+}
