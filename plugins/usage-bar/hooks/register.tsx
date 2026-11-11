@@ -216,6 +216,19 @@ function usageText(s: UsageSnapshot | null): string {
   return lines.join('\n')
 }
 
+// 한 줄 요약 (입력 가로채기 안내 문구용)
+function usageLine(s: UsageSnapshot | null): string {
+  if (s === null || (s.rows.length === 0 && !s.cost)) {
+    return '아직 사용량 수치가 없습니다. 응답을 한 번 받은 뒤 다시 보내 주세요.'
+  }
+  const parts = s.rows.map(r => {
+    const reset = r.resetsAt ? `(${formatReset(r.resetsAt)})` : ''
+    return `${r.label} ${Math.round(r.percent)}%${reset}`
+  })
+  if (s.cost) parts.push(...costLines(s.cost))
+  return `[사용량] ${parts.join(' · ')} ※ 비용은 API 단가 기준 추정`
+}
+
 // 그릴 내용이 있는지
 function hasContent(s: UsageSnapshot | null): s is UsageSnapshot {
   return s !== null && (s.rows.length > 0 || s.cost !== undefined)
@@ -260,8 +273,8 @@ export const register: Register = on => {
     const id = `usage-${rowSeq}-${Date.now()}`
     if (s !== null) placedRows.set(id, s)
     void $.ui.place({ id })
-    // 모델 호출 없이 종료 — 안내 문구로도 텍스트 막대를 함께 보여줌
-    return { drop: usageText(s) }
+    // 모델 호출 없이 종료 — 안내 문구는 한 줄로 (줄바꿈이 깨지는 화면이 있음)
+    return { drop: usageLine(s) }
   })
 
   // 메인 대화의 작업(턴) 1회가 끝나면 그 비용을 집계 (하위 에이전트 턴은 제외)
