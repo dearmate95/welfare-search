@@ -1,1 +1,1 @@
-{ "name": "usage-bar", "version": "0.5.0", "description": "프롬프트 위에 컨텍스트·요금제 한도 사용량과 예상 크레딧 비용을 막대로 표시", "types": "./types/index.d.ts" }
+{ "name": "usage-bar", "version": "0.6.0", "description": "프롬프트 위에 컨텍스트·요금제 한도 사용량과 예상 크레딧 비용을 막대로 표시", "types": "./types/index.d.ts" }

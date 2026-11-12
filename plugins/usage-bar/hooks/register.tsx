@@ -10,8 +10,14 @@ const snapshot = atom({ plugin: 'usage-bar', key: 'snapshot' } as const, null, {
 // 비용 집계용 누적값
 const costTrack = atom({ plugin: 'usage-bar', key: 'costTrack' } as const, null, { shape: 'cost-1' })
 
+// 답변 아래 자동 사용량 줄 표시 여부 (기본: 켬)
+const autoLine = atom({ plugin: 'usage-bar', key: 'autoLine' } as const, true)
+
 // 막대 길이(칸 수)
 const BAR_WIDTH = 20
+
+// 답변 아래 줄에 쓰는 짧은 막대 길이
+const MINI_BAR_WIDTH = 10
 
 // 1%당 비용을 계산하기 전에 최소한 올라야 하는 %p (너무 작으면 오차가 큼)
 const MIN_PCT_FOR_ESTIMATE = 2
@@ -24,10 +30,22 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 // 0~100 퍼센트를 █/░ 막대 문자열로 변환
-function bar(percent: number): string {
+function bar(percent: number, width = BAR_WIDTH): string {
   const p = Math.max(0, Math.min(100, percent))
-  const filled = Math.round((p / 100) * BAR_WIDTH)
-  return '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
+  const filled = Math.round((p / 100) * width)
+  return '█'.repeat(filled) + '░'.repeat(width - filled)
+}
+
+// 답변 아래에 붙일 짧은 사용량 줄 (한도별 한 줄 + 비용 한 줄)
+function compactLine(s: UsageSnapshot): string {
+  const short: Record<string, string> = { '5시간 한도': '5시간', '주간 한도': '주간　', '컨텍스트': '대화량' }
+  const lines = s.rows.map(r => `${short[r.label] ?? r.label} ${bar(r.percent, MINI_BAR_WIDTH)} ${Math.round(r.percent)}%`)
+  const c = s.cost
+  if (c) {
+    const last = c.lastTurnUsd !== undefined ? `직전 작업 ${money(c.lastTurnUsd)} · ` : ''
+    lines.push(`예상 크레딧 ${last}세션 ${money(c.usd)}`)
+  }
+  return `[사용량]\n${lines.join('\n')}`
 }
 
 // 사용률에 따른 색상 (70% 미만 초록, 90% 미만 노랑, 그 이상 빨강)
@@ -272,7 +290,17 @@ export const register: Register = on => {
 
   // /usage-bar : 고정 패널을 열고, 대화창에도 막대를 텍스트로 출력
   // 패널이 안 뜨는 화면이면 그 이유를 마지막 줄에 표시
-  on('command.run', { command: COMMAND }, async $ => {
+  on('command.run', { command: COMMAND }, async ($, e) => {
+    // /usage-bar 끄기 · /usage-bar 켜기 : 답변 아래 자동 사용량 줄 설정
+    const arg = (e.args ?? '').trim()
+    if (arg === '끄기' || arg === 'off') {
+      await update($, autoLine, () => false)
+      return { text: '답변 아래 사용량 줄을 껐습니다. 다시 켜려면 /usage-bar 켜기' }
+    }
+    if (arg === '켜기' || arg === 'on') {
+      await update($, autoLine, () => true)
+      return { text: '답변 아래 사용량 줄을 켰습니다. 끄려면 /usage-bar 끄기' }
+    }
     await refresh($)
     const opened = await openPane($)
     const text = usageText(await read($, snapshot))
@@ -299,9 +327,17 @@ export const register: Register = on => {
   })
 
   // 메인 대화의 작업(턴) 1회가 끝나면 그 비용을 집계 (하위 에이전트 턴은 제외)
+  // 그리고 답변 바로 아래에 사용량 줄을 붙임 (모든 앱에서 보이는 대화창 알림 행, 모델은 읽지 않음)
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId === undefined) await refresh($, true)
+    if (e.agentId !== undefined) return result
+    await refresh($, true)
+    if (await read($, autoLine)) {
+      const s = await read($, snapshot)
+      if (hasContent(s)) {
+        await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: compactLine(s) }] } })
+      }
+    }
     return result
   })
 
