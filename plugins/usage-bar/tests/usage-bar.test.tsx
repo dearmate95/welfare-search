@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 // 테스트용 가짜 사용량 (컨텍스트 41%, 5시간 한도 15%)
 const USAGE = {
@@ -147,4 +147,29 @@ test('/usage-bar 결과에 패널 상태 진단 줄이 붙음', async ($, on) =>
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const out = await $.command.run({ command: 'usage-bar' })
   expect(out.text).toContain('[패널] 표시 대기 (test-reason) · 연결된 화면: desktop')
+})
+
+test('답변이 끝나면 사용량 줄이 대화창 알림 행으로 붙고, 끄기로 멈춤', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+  const session = mock.session(on)
+
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  const turn = { answer: '', durationMs: 1, isAborted: false, reason: 'answer', text: '' } as const
+  await $.turn.complete({ ...turn, turnId: 't1' })
+
+  const rows = session.appended()
+  expect(rows.length).toBe(1)
+  const text = JSON.stringify(rows[0])
+  expect(text).toContain('[사용량]')
+  expect(text).toContain('5시간 ██░░░░░░░░ 15%')
+
+  await $.command.run({ command: 'usage-bar', args: '끄기' })
+  await $.turn.complete({ ...turn, turnId: 't2' })
+  expect(session.appended().length).toBe(1)
 })

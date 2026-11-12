@@ -27,6 +27,10 @@ export type CostTrack = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-bar': { snapshot: Shaped<UsageSnapshot | null>; costTrack: Shaped<CostTrack | null> }
+    'usage-bar': {
+      snapshot: Shaped<UsageSnapshot | null>
+      costTrack: Shaped<CostTrack | null>
+      autoLine: boolean // 답변 아래 사용량 줄 표시 여부
+    }
   }
 }
