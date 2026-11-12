@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit } from 'claude-code'
+import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, UiOpenResult } from 'claude-code'
 
 import type { CostTrack, CostView, PerPercent, UsageRow, UsageSnapshot } from '../types'
 
@@ -229,6 +229,19 @@ function usageLine(s: UsageSnapshot | null): string {
   return `[사용량] ${parts.join(' · ')} ※ 비용은 API 단가 기준 추정`
 }
 
+// 고정 패널 열기 (이미 열려 있으면 그대로 유지)
+async function openPane($: EngineInterface): Promise<UiOpenResult> {
+  return $.ui.open({ id: PANE_ID, title: '사용량' })
+}
+
+// 패널 상태 진단 한 줄
+async function paneDiag($: EngineInterface, r: UiOpenResult): Promise<string> {
+  const surfaces = (await $.session.surfaces()).join(', ') || '없음'
+  return r.isPlaced
+    ? `[패널] 고정 표시 중 · 연결된 화면: ${surfaces}`
+    : `[패널] 표시 대기 (${r.reason}) · 연결된 화면: ${surfaces}`
+}
+
 // 그릴 내용이 있는지
 function hasContent(s: UsageSnapshot | null): s is UsageSnapshot {
   return s !== null && (s.rows.length > 0 || s.cost !== undefined)
@@ -243,21 +256,27 @@ export const register: Register = on => {
       description: '사용량(컨텍스트·5시간·주간 한도)과 예상 크레딧 비용 보기',
     })
     await refresh($)
+    // 이미 앱이 연결된 상태로 시작·재로드되면 바로 패널을 엶
+    const surfaces = await $.session.surfaces()
+    if (surfaces.some(s => s !== 'terminal')) void openPane($)
     return result
   })
 
-  // 모바일 앱이 연결되면 사용량 패널을 열어 둠 (Mods 시트에 표시)
-  on('session.attach', { surface: 'mobile' }, async ($, e, next) => {
+  // 앱(PC·모바일·웹)이 연결될 때마다 고정 패널을 열어 둠
+  // (터미널은 입력창 위 band 가 이미 고정 표시하므로 제외)
+  on('session.attach', async ($, e, next) => {
     const result = await next(e)
-    void $.ui.open({ id: PANE_ID, title: '사용량' })
+    if (e.surface !== 'terminal') void openPane($)
     return result
   })
 
-  // /usage-bar : 대화창에 막대를 텍스트로 출력하고 패널도 열기
+  // /usage-bar : 고정 패널을 열고, 대화창에도 막대를 텍스트로 출력
+  // 패널이 안 뜨는 화면이면 그 이유를 마지막 줄에 표시
   on('command.run', { command: COMMAND }, async $ => {
     await refresh($)
-    void $.ui.open({ id: PANE_ID, title: '사용량' })
-    return { text: usageText(await read($, snapshot)) }
+    const opened = await openPane($)
+    const text = usageText(await read($, snapshot))
+    return { text: `${text}\n${await paneDiag($, opened)}` }
   })
 
   // 모바일 앱은 슬래시 명령을 일반 메시지로 보내므로 입력 단계에서 직접 가로챔
@@ -273,6 +292,8 @@ export const register: Register = on => {
     const id = `usage-${rowSeq}-${Date.now()}`
     if (s !== null) placedRows.set(id, s)
     void $.ui.place({ id })
+    // 사람이 직접 보낸 요청이므로 좁은 화면(모바일)에서도 고정 패널이 열림
+    void openPane($)
     // 모델 호출 없이 종료 — 안내 문구는 한 줄로 (줄바꿈이 깨지는 화면이 있음)
     return { drop: usageLine(s) }
   })

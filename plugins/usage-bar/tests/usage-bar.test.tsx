@@ -25,6 +25,8 @@ const PANE = {
 test('모바일 포함 모든 화면에서 패널에 막대가 그려짐', async ($, on) => {
   // 아래 훅들은 엔진 역할을 대신함
   on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -45,6 +47,9 @@ test('모바일 포함 모든 화면에서 패널에 막대가 그려짐', async
 test('모바일에서 "사용량" 메시지를 보내면 모델 호출 없이 막대 행을 배치', async ($, on) => {
   const placed: string[] = []
   on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.usage', () => ({ value: USAGE }))
   on('ui.place', (_, e) => {
     placed.push(e.id)
@@ -82,6 +87,8 @@ test('작업(턴)마다 비용을 집계하고 한도 1%당 비용을 추정', a
   let usd = 1.0
   let weekly = 10
   on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.usage', () => ({
     value: {
@@ -116,6 +123,8 @@ test('작업(턴)마다 비용을 집계하고 한도 1%당 비용을 추정', a
 
 test('/usage-bar 명령이 대화창에 막대 텍스트를 남김', async ($, on) => {
   on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -125,4 +134,17 @@ test('/usage-bar 명령이 대화창에 막대 텍스트를 남김', async ($, o
   expect(out.text).toContain('컨텍스트 ████████')
   expect(out.text).toContain('41%')
   expect(out.text).toContain('5시간 한도')
+})
+
+test('/usage-bar 결과에 패널 상태 진단 줄이 붙음', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'usage-bar' } }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: false, reason: 'test-reason' } }))
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const out = await $.command.run({ command: 'usage-bar' })
+  expect(out.text).toContain('[패널] 표시 대기 (test-reason) · 연결된 화면: desktop')
 })
