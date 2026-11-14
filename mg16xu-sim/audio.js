@@ -140,7 +140,7 @@ class Engine {
     this.state = state;            // UI와 공유하는 컨트롤 값
     this.playing = false;
     this.listen = 'house';
-    this.connIn = {};              // 입력 장비 id → 채널 id
+    this.patch = {};               // 채널 id → 입력 장비 인스턴스 (같은 장비를 여러 채널에 꽂을 수 있음)
     this.connOut = {};             // 출력 장비 id → 단자 id
     const AC = window.AudioContext || window.webkitAudioContext;
     const ctx = this.ctx = new AC({ latencyHint: 'interactive' });
@@ -318,15 +318,11 @@ class Engine {
   /* ---------- 장비 ---------- */
   _mkDevices() {
     const ctx = this.ctx;
-    this.inDev = {}; this.outDev = {};
-    IN_DEVS.forEach(def => {
-      const d = { def, bus: this.gain(1, def.stereo ? 2 : 1), ph: this.gain(def.phantom ? 0 : 1), out: this.gain(REF * dB(def.level) * def.norm) };
-      d.vin = d.bus;
-      d.bus.connect(d.ph); d.ph.connect(d.out);
-      d.an = this.analyser(1024); d.out.connect(d.an);
-      this._mkVoiceChain(d);
-      this.inDev[def.id] = d;
-    });
+    this.outDev = {};
+    // 여러 채널이 함께 쓰는 공용 음원 (테스트 톤, 핑크 노이즈, 실제 마이크)
+    const o = ctx.createOscillator(); o.frequency.value = 1000; this.toneSrc = this.gain(1.414); o.connect(this.toneSrc); o.start();
+    const s = ctx.createBufferSource(); s.buffer = this.pink; s.loop = true; this.pinkSrc = this.gain(2); s.connect(this.pinkSrc); s.start();
+    this.realSrc = this.gain(8);
     OUT_DEVS.forEach(def => {
       const d = { def, in: this.gain(1, def.stereo ? 2 : 1), zone: this.gain(0) };
       d.an = this.analyser(1024); d.in.connect(d.an);
@@ -341,6 +337,16 @@ class Engine {
     this.usbPlay.connect(this.ch['15/16'].usbIn);
     this.usbGate = this.gain(0, 2); this.usbGate.connect(this.usbPlay);
     this.setListen(this.listen);
+  }
+
+  // 입력 장비 인스턴스 1개 생성 (채널에 꽂을 때마다 새로 만듦)
+  _mkInst(def) {
+    const d = { def, bus: this.gain(1, def.stereo ? 2 : 1), ph: this.gain(def.phantom ? 0 : 1), out: this.gain(REF * dB(def.level) * def.norm) };
+    d.vin = d.bus;
+    d.bus.connect(d.ph); d.ph.connect(d.out);
+    d.an = this.analyser(1024); d.out.connect(d.an);
+    this._mkVoiceChain(d);
+    return d;
   }
 
   // 장비별 고정 음색 체인 (보컬 포먼트, 기타 디스토션 등)
@@ -361,39 +367,40 @@ class Engine {
       const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 3200;
       const h = ctx.createBiquadFilter(); h.type = 'highpass'; h.frequency.value = 110;
       d.vin.connect(sh); sh.connect(f); f.connect(h); h.connect(d.bus);
-    } else if (id === 'tone') {
-      const o = ctx.createOscillator(); o.frequency.value = 1000; const g = this.gain(1.414); o.connect(g); g.connect(d.bus); o.start();
-    } else if (id === 'pink') {
-      const s = ctx.createBufferSource(); s.buffer = this.pink; s.loop = true; const g = this.gain(2); s.connect(g); g.connect(d.bus); s.start();
-    }
+    } else if (id === 'tone') { d.shared = this.toneSrc; }
+    else if (id === 'pink') { d.shared = this.pinkSrc; }
+    else if (id === 'real') { d.shared = this.realSrc; }
+    if (d.shared) d.shared.connect(d.bus);
   }
 
   async enableRealMic() {
-    const d = this.inDev.real;
-    if (d.stream) return true;
+    if (this.realStream) return true;
     try {
-      d.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });
-      const src = this.ctx.createMediaStreamSource(d.stream);
-      const g = this.gain(8); src.connect(g); g.connect(d.bus);
+      this.realStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });
+      this.ctx.createMediaStreamSource(this.realStream).connect(this.realSrc);
       return true;
     } catch (e) { return false; }
   }
 
   /* ---------- 케이블 연결 ---------- */
+  // 채널에 장비를 꽂음 (그 채널에 있던 장비는 뽑힘, 같은 장비는 다른 채널에도 계속 꽂혀 있음)
   connectIn(devId, chId) {
-    this.disconnectIn(devId);
-    Object.keys(this.connIn).forEach(k => { if (this.connIn[k] === chId) this.disconnectIn(k); });
-    const d = this.inDev[devId], c = this.ch[chId];
-    d.out.connect(c.jackIn); this.connIn[devId] = chId; c.srcType = d.def.type;
+    this.disconnectCh(chId, true);
+    const d = this._mkInst(IN_DEVS.find(x => x.id === devId)), c = this.ch[chId];
+    d.out.connect(c.jackIn); this.patch[chId] = d; c.srcType = d.def.type;
     this.syncAll();
   }
-  disconnectIn(devId) {
-    const chId = this.connIn[devId]; if (chId === undefined) return;
-    const d = this.inDev[devId], c = this.ch[chId];
-    try { d.out.disconnect(c.jackIn); } catch (e) { /* 이미 분리됨 */ }
-    delete this.connIn[devId]; c.srcType = null;
-    this.syncAll();
+  disconnectCh(chId, quiet) {
+    const d = this.patch[chId]; if (!d) return;
+    try { d.out.disconnect(); } catch (e) { /* 이미 분리됨 */ }
+    if (d.shared) { try { d.shared.disconnect(d.bus); } catch (e) { /* 무시 */ } }
+    delete this.patch[chId]; this.ch[chId].srcType = null;
+    if (!quiet) this.syncAll();
   }
+  // 이 장비가 꽂힌 채널 목록 (채널 순서대로)
+  devChannels(devId) { return CHANNELS.map(c => c.id).filter(id => this.patch[id] && this.patch[id].def.id === devId); }
+  // 같은 장비 중 몇 번째인지 (0부터)
+  variant(chId) { const d = this.patch[chId]; return d ? this.devChannels(d.def.id).indexOf(chId) : 0; }
   connectOut(devId, jackId) {
     this.disconnectOut(devId);
     Object.keys(this.connOut).forEach(k => { if (this.connOut[k] === jackId) this.disconnectOut(k); });
@@ -408,7 +415,7 @@ class Engine {
     delete this.connOut[devId];
     this.syncAll();
   }
-  chDevice(chId) { return Object.keys(this.connIn).find(k => this.connIn[k] === chId); }
+  chDevice(chId) { return this.patch[chId] ? this.patch[chId].def.id : undefined; }
   jackDevice(jackId) { return Object.keys(this.connOut).find(k => this.connOut[k] === jackId); }
 
   setListen(pos) {
@@ -467,9 +474,9 @@ class Engine {
     this.set(m.monNorm.gain, pfl ? 0 : 1); this.set(m.pflGate.gain, pfl ? 1 : 0);
     this.set(m.monLevel.gain, v('monLevel')); this.set(m.phLevel.gain, v('phones'));
     // 팬텀 전원: 콘덴서 마이크는 +48V가 켜져 있고 마이크 입력 채널에 꽂혀 있어야 소리가 남
-    IN_DEVS.filter(d => d.phantom).forEach(d => {
-      const chId = this.connIn[d.id], ok = v('phantom') && chId !== undefined && this.ch[chId].def.mic;
-      this.set(this.inDev[d.id].ph.gain, ok ? 1 : 0);
+    Object.keys(this.patch).forEach(chId => {
+      const d = this.patch[chId]; if (!d.def.phantom) return;
+      this.set(d.ph.gain, v('phantom') && this.ch[chId].def.mic ? 1 : 0);
     });
     this.set(this.usbGate.gain, this.connOut.pc === 'usb' ? 1 : 0);
     this.fx.set(v('prog') || 1, v('param'));
@@ -501,7 +508,7 @@ class Engine {
     if (this.nextT < this.ctx.currentTime) this.nextT = this.ctx.currentTime + 0.02;   // 탭이 백그라운드였을 때 보정
     while (this.nextT < this.ctx.currentTime + 0.12) {
       const st = this.step, t = this.nextT;
-      Object.keys(this.connIn).forEach(id => this._play(id, this.inDev[id].vin, st, t, sd, 1));
+      Object.keys(this.patch).forEach(chId => this._play(this.patch[chId].def.id, this.patch[chId].vin, st, t, sd, 1, this.variant(chId)));
       if (this.connOut.pc === 'usb') this._play('phone', this.usbGate, st, t, sd, 1);
       this.step = (st + 1) % 64; this.nextT += sd;
     }
@@ -566,7 +573,8 @@ class Engine {
     l.connect(lg); lg.connect(o.detune); l.start(t + 0.15); l.stop(t + dur + 0.05);   // 비브라토
   }
   // 장비별 연주 패턴
-  _play(id, dest, step, t, sd, v) {
+  // variant: 같은 장비의 몇 번째 인스턴스인지 (보컬·코러스는 번호마다 다른 파트를 부름)
+  _play(id, dest, step, t, sd, v, variant = 0) {
     const bar = step >> 4, s = step & 15, ch = SONG.chords[bar];
     switch (id) {
       case 'kick': if (s === 0 || s === 8 || (s === 10 && bar % 2)) this.vKick(dest, t, v); break;
@@ -580,8 +588,13 @@ class Engine {
       case 'egt': if ([0, 3, 6, 10, 12].includes(s)) this.vGtr(dest, t, SONG.bass[bar] + 12, sd * 2.2, v * 0.25); break;
       case 'agt': if (s % 2 === 0) this.vStrum(dest, t, ch, v * (s % 4 === 0 ? 0.17 : 0.1), s % 4 === 2); break;
       case 'keys': if (s === 0 || s === 10) this.vKeys(dest, t, ch, sd * 9, v * 0.28); break;
-      case 'vox': SONG.lead.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m, len * sd, v * 0.5); }); break;
-      case 'cho': SONG.harm.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m, len * sd, v * 0.5); }); break;
+      case 'vox': case 'cho': {
+        // 파트 순환: 보컬 = 멜로디 → 화음 → 낮은 멜로디, 코러스 = 화음 → 멜로디 → 낮은 화음
+        const k = (variant + (id === 'cho' ? 1 : 0)) % 3, part = k === 1 ? SONG.harm : SONG.lead;
+        const shift = variant >= 2 ? -12 : k === 2 ? -12 : 0;
+        part.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m + shift, len * sd, v * 0.5); });
+        break;
+      }
       case 'phone':   // 반주 음원: 드럼 + 베이스 + 건반이 이미 섞여 있는 스테레오 음원
         if (s === 0 || s === 8) this.vKick(dest, t, v * 0.55);
         if (s === 4 || s === 12) this.vSnare(dest, t, v * 0.4);

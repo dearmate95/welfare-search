@@ -323,22 +323,25 @@ async function plugIn(devId, chId) {
   E.connectIn(devId, chId); refreshConn(); selectCh(chId);
 }
 function canPlugIn(dev, ch) { return dev.type !== 'mic' || ch.mic; }
+// 장비 카드 메뉴: 여러 채널을 연달아 고를 수 있도록 선택 후에도 메뉴를 다시 띄움
 function menuForInDev(devId, el) {
-  const dev = inDef(devId), cur = E.connIn[devId];
+  const dev = inDef(devId), cur = E.devChannels(devId);
+  const again = () => menuForInDev(devId, el);
   const items = CHANNELS.map(ch => {
     const used = E.chDevice(ch.id), ok = canPlugIn(dev, ch);
-    return { label: `CH ${ch.id}`, sub: !ok ? '마이크(XLR) 단자 없음' : used === devId ? '연결됨' : used ? `${inDef(used).name} → 교체` : (ch.mic ? '비어 있음' : '비어 있음 · 라인 전용'), cur: used === devId, disabled: !ok, act: () => plugIn(devId, ch.id) };
+    if (used === devId) return { label: `CH ${ch.id}`, sub: '✔ 연결됨 · 누르면 뽑기', cur: true, act: () => { E.disconnectCh(ch.id); refreshConn(); again(); } };
+    return { label: `CH ${ch.id}`, sub: !ok ? '마이크(XLR) 단자 없음' : used ? `${inDef(used).name} → 교체` : (ch.mic ? '비어 있음' : '비어 있음 · 라인 전용'), disabled: !ok, act: async () => { await plugIn(devId, ch.id); again(); } };
   });
-  if (cur !== undefined) items.push({ label: '케이블 뽑기', danger: true, act: () => { E.disconnectIn(devId); refreshConn(); } });
-  showMenu(el, `${dev.icon} ${dev.name} → 어느 채널에 꽂을까요?` + (dev.real ? ' (스피커로 들으면 하울링 주의, 헤드폰 권장)' : ''), items);
+  if (cur.length) items.push({ label: cur.length > 1 ? `모두 뽑기 (${cur.length}개)` : '케이블 뽑기', danger: true, act: () => { cur.forEach(id => E.disconnectCh(id)); refreshConn(); } });
+  showMenu(el, `${dev.icon} ${dev.name} → 꽂을 채널을 고르세요 (여러 개 선택 가능)` + (dev.real ? ' · 스피커로 들으면 하울링 주의, 헤드폰 권장' : ''), items);
 }
 function menuForChannel(chId, el) {
   const ch = CHANNELS.find(c => c.id === chId), cur = E.chDevice(chId);
   const items = IN_DEVS.map(dev => {
-    const at = E.connIn[dev.id], ok = canPlugIn(dev, ch);
-    return { label: `${dev.icon} ${dev.name}`, sub: !ok ? '이 채널에는 마이크 단자가 없음' : at === chId ? '연결됨' : at !== undefined ? `CH ${at}에서 옮기기` : dev.sub, cur: at === chId, disabled: !ok, act: () => plugIn(dev.id, chId) };
+    const at = E.devChannels(dev.id).filter(id => id !== chId), ok = canPlugIn(dev, ch);
+    return { label: `${dev.icon} ${dev.name}`, sub: !ok ? '이 채널에는 마이크 단자가 없음' : cur === dev.id ? '연결됨' : at.length ? `${at.length + 1}번째로 추가 (CH ${at.join(', ')} 사용 중)` : dev.sub, cur: cur === dev.id, disabled: !ok, act: () => plugIn(dev.id, chId) };
   });
-  if (cur) items.push({ label: '케이블 뽑기', danger: true, act: () => { E.disconnectIn(cur); refreshConn(); } });
+  if (cur) items.push({ label: '케이블 뽑기', danger: true, act: () => { E.disconnectCh(chId); refreshConn(); } });
   showMenu(el, `CH ${chId} 입력에 무엇을 꽂을까요?`, items);
 }
 function canPlugOut(dev, jackId) { return dev.only ? dev.only.includes(jackId) : !jackDef(jackId).stereo; }
@@ -363,11 +366,11 @@ function menuForJack(jackId, el) {
 // 연결 상태를 화면에 반영
 function refreshConn() {
   IN_DEVS.forEach(d => {
-    const at = E.connIn[d.id], e = devEls[d.id];
-    e.el.classList.toggle('conn', at !== undefined);
-    const warn = d.phantom && at !== undefined && !state['m.phantom'];
+    const at = E.devChannels(d.id), e = devEls[d.id];
+    e.el.classList.toggle('conn', at.length > 0);
+    const warn = d.phantom && at.length > 0 && !state['m.phantom'];
     e.el.classList.toggle('warn', !!warn);
-    e.cn.textContent = at === undefined ? '미연결' : `→ CH ${at}` + (warn ? ' · +48V 꺼짐!' : '');
+    e.cn.textContent = !at.length ? '미연결' : `→ CH ${at.join(', ')}` + (at.length > 1 ? ` (${at.length}개)` : '') + (warn ? ' · +48V 꺼짐!' : '');
   });
   OUT_DEVS.forEach(d => {
     const at = E.connOut[d.id], e = devEls[d.id];
@@ -379,7 +382,8 @@ function refreshConn() {
     e.jack.textContent = dev ? inDef(dev).icon : '';
     e.jack.classList.toggle('plug', !!dev);
     e.jack.style.setProperty('--c', dev ? devEls[dev].color : 'transparent');
-    e.tape.textContent = dev ? inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
+    const many = dev && E.devChannels(dev).length > 1;   // 같은 장비가 여러 개면 번호를 붙임
+    e.tape.textContent = dev ? inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '') + (many ? ' ' + (E.variant(c.id) + 1) : '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
   });
   OUT_JACKS.forEach(j => {
     const dev = E.jackDevice(j.id), b = jackEls[j.id];
@@ -417,7 +421,8 @@ function selectCh(id) {
 function updateChanHead() {
   if (!E) return;
   const dev = E.chDevice(selCh), c = E.ch[selCh];
-  $('#chanDev').innerHTML = dev ? `${inDef(dev).icon} <b>${inDef(dev).name}</b> <small>${inDef(dev).sub}</small>` : (c.def.usb && state['ch15/16.lineusb'] ? '🖥️ <b>USB 재생</b>' : '<small>연결된 장비 없음 — 단자를 눌러 장비를 꽂아 보세요</small>');
+  const nth = dev && E.devChannels(dev).length > 1 ? ` ${E.variant(selCh) + 1}` : '';
+  $('#chanDev').innerHTML = dev ? `${inDef(dev).icon} <b>${inDef(dev).name}${nth}</b> <small>${inDef(dev).sub}</small>` : (c.def.usb && state['ch15/16.lineusb'] ? '🖥️ <b>USB 재생</b>' : '<small>연결된 장비 없음 — 단자를 눌러 장비를 꽂아 보세요</small>');
 }
 // dB → 막대 길이(%)  (−60 ~ +24 dB)
 const barPct = d => clamp((d + 60) / 84) * 100;
@@ -524,7 +529,11 @@ function loop() {
   pflLed.classList.toggle('on', power && E.pflActive() && Math.floor(now / 250) % 2 === 0);
   phLed.classList.toggle('on', power && !!state['m.phantom']);
   // 장비 카드 레벨
-  IN_DEVS.forEach(d => { const e = devEls[d.id]; if (E.connIn[d.id] === undefined) { e.mt.style.width = '0'; return; } e.mt.style.width = clamp((decay(e, power ? E.peakDb(E.inDev[d.id].an) : -140, 1.5) + 70) / 80) * 100 + '%'; });
+  IN_DEVS.forEach(d => {
+    const e = devEls[d.id], chs = E.devChannels(d.id); if (!chs.length) { e.mt.style.width = '0'; return; }
+    const pk = power ? Math.max(...chs.map(id => E.peakDb(E.patch[id].an))) : -140;   // 여러 개면 가장 큰 레벨
+    e.mt.style.width = clamp((decay(e, pk, 1.5) + 70) / 80) * 100 + '%';
+  });
   OUT_DEVS.forEach(d => {
     const e = devEls[d.id]; if (E.connOut[d.id] === undefined) { e.mt.style.width = '0'; e.el.classList.remove('clip'); return; }
     const lv = decay(e, power ? E.peakDb(E.outDev[d.id].an) : -140, 1.5);
@@ -545,7 +554,7 @@ function loop() {
 
 /* ---------- 프리셋 ---------- */
 function resetControls() { Object.keys(C).forEach(id => { state[id] = C[id].def; paint(id); }); E.syncAll(); }
-function unplugAll() { Object.keys(E.connIn).forEach(k => E.disconnectIn(k)); Object.keys(E.connOut).forEach(k => E.disconnectOut(k)); }
+function unplugAll() { Object.keys(E.patch).forEach(k => E.disconnectCh(k)); Object.keys(E.connOut).forEach(k => E.disconnectOut(k)); }
 const WIRING_IN = { vox: '1', cho: '2', agt: '3', egt: '4', bass: '5', kick: '6', snr: '7', oh: '8', keys: '9/10', phone: '13/14' };
 const WIRING_OUT = { mainL: 'stL', mainR: 'stR', wedge1: 'aux1', wedge2: 'aux2', boothL: 'monL', boothR: 'monR', hp: 'phones', pc: 'usb' };
 function wire() {
