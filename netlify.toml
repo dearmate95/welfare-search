@@ -1,0 +1,4 @@
+# Netlify 배포 설정: 빌드 과정 없이 mg16xu-sim 폴더를 그대로 게시
+[build]
+  publish = "mg16xu-sim"
+  command = ""

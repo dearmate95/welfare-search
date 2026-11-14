@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MG16XU 믹서 학습 시뮬레이터</title>
+<meta name="description" content="16채널 아날로그 믹서(MG16XU)의 모든 노브·버튼·페이더를 직접 조작하고 소리와 신호 흐름의 변화를 확인하는 학습용 시뮬레이터">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><b>MG16XU</b> 믹서 학습 시뮬레이터 <small>비공식 교육용</small></div>
+  <button id="btnPower" class="tb power" title="믹서 전원 (소리 시작)">⏻ POWER</button>
+  <button id="btnPlay" class="tb" title="가상 연주자들이 연주를 시작/정지합니다">▶ 연주 시작</button>
+  <div class="seg" id="listenSeg" title="내가 어디에서 듣고 있는지 선택">
+    <span class="segLabel">듣는 위치</span>
+    <button data-pos="house" class="on">객석</button>
+    <button data-pos="stage">무대</button>
+    <button data-pos="booth">조정석</button>
+    <button data-pos="phones">헤드폰</button>
+    <button data-pos="rec">USB 녹음</button>
+  </div>
+  <label class="vol" title="내 컴퓨터로 듣는 음량">🔉 <input id="vol" type="range" min="0" max="100" value="70"></label>
+  <span class="spacer"></span>
+  <button id="btnWire" class="tb">🔌 기본 연결만</button>
+  <button id="btnPreset" class="tb accent">⚡ 밴드 세팅 한번에</button>
+  <button id="btnReset" class="tb">↺ 초기화</button>
+  <label class="vol" title="믹서 크기">🔍 <input id="zoom" type="range" min="45" max="130" value="100"></label>
+  <button id="btnHelp" class="tb">? 사용법</button>
+</header>
+
+<main>
+  <section id="left">
+    <div id="stage">
+      <div class="shelf"><h3>입력 장비 <small>카드를 눌러 채널에 연결</small></h3><div id="inDevs" class="devs"></div></div>
+      <div class="shelf"><h3>출력 장비 <small>카드를 눌러 출력 단자에 연결</small></h3><div id="outDevs" class="devs"></div></div>
+    </div>
+    <div id="mixerWrap"><div id="mixer" class="off"></div></div>
+  </section>
+
+  <aside id="insp">
+    <section class="card" id="infoCard">
+      <h4>지금 만지는 컨트롤</h4>
+      <div id="infoName">컨트롤에 마우스를 올리거나 조작해 보세요</div>
+      <div id="infoVal"></div>
+      <p id="infoDesc">노브는 위아래로 드래그(또는 휠), 버튼은 클릭, 페이더는 드래그합니다. 더블클릭하면 기본값으로 돌아갑니다.</p>
+      <p id="infoWatch"></p>
+    </section>
+    <section class="card" id="chanCard">
+      <h4>채널 분석 <select id="chanSel"></select></h4>
+      <div id="chanDev"></div>
+      <div class="sub">구간별 레벨 <small>(0 dB = 기준 레벨, +20 dB에서 찌그러짐)</small></div>
+      <div id="stages"></div>
+      <div class="sub">EQ 곡선 + 실시간 스펙트럼</div>
+      <canvas id="eqCv" width="680" height="260"></canvas>
+      <div id="compBox">
+        <div><div class="sub">컴프레서</div><canvas id="compCv" width="240" height="240"></canvas></div>
+        <div id="compSide"><div class="sub">게인 리덕션</div><div id="grBar"><i></i></div><div id="grTxt">0.0 dB</div><div id="compTxt"></div></div>
+      </div>
+      <div class="sub">이 채널은 어디로 가나</div>
+      <div id="route"></div>
+      <div class="sub">소리가 안 날 때 점검 순서</div>
+      <ol id="check"></ol>
+    </section>
+    <section class="card">
+      <h4>버스 레벨</h4>
+      <div id="buses"></div>
+    </section>
+  </aside>
+</main>
+
+<div id="menu" hidden></div>
+<div id="help" hidden>
+  <div class="helpBox">
+    <h2>사용법</h2>
+    <ol>
+      <li><b>⏻ POWER</b>를 켭니다. (브라우저 정책상 클릭해야 소리가 납니다)</li>
+      <li><b>입력 장비 카드</b>를 눌러 채널에 꽂고, <b>출력 장비 카드</b>를 눌러 STEREO OUT·AUX SEND 등에 꽂습니다. 믹서의 단자를 직접 눌러도 됩니다.</li>
+      <li><b>▶ 연주 시작</b>을 누르면 연결된 장비에서 신호가 나옵니다.</li>
+      <li>GAIN → ON → 채널 페이더 → ST 스위치 → STEREO ON → STEREO 페이더 순으로 올려 소리를 냅니다.</li>
+      <li>오른쪽 패널에서 구간별 레벨, EQ 곡선, 컴프레서 동작, 신호 경로 점검표가 실시간으로 바뀝니다.</li>
+    </ol>
+    <p><b>조작</b> · 노브: 위/아래 드래그 또는 마우스 휠 (Shift = 미세 조정) · 버튼: 클릭 · 페이더: 드래그 · 더블클릭: 기본값</p>
+    <p><b>듣는 위치</b> · 객석 = 메인 스피커 / 무대 = 모니터(웨지) 스피커 / 조정석 = MONITOR OUT 스피커 / 헤드폰 = PHONES / USB 녹음 = 노트북에 녹음되는 소리</p>
+    <p><b>빠른 시작</b> · 「⚡ 밴드 세팅 한번에」를 누르면 연결과 기본 믹스가 자동으로 잡힙니다. 「🔌 기본 연결만」은 케이블만 꽂고 조작은 직접 해 보는 실습용입니다.</p>
+    <p class="note">※ 실제 제품을 학습 목적으로 본뜬 비공식 시뮬레이터입니다. 소리와 수치는 원리를 이해하기 위한 근사값이며, 실제 기기의 세부 사양은 제조사 사용설명서를 확인하세요.</p>
+    <button id="helpClose" class="tb accent">닫기</button>
+  </div>
+</div>
+
+<script src="audio.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
