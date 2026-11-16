@@ -422,7 +422,7 @@ function updateChanHead() {
   if (!E) return;
   const dev = E.chDevice(selCh), c = E.ch[selCh];
   const nth = dev && E.devChannels(dev).length > 1 ? ` ${E.variant(selCh) + 1}` : '';
-  const part = dev && inDef(dev).voice ? ` · 파트: ${voicePart(inDef(dev), E.variant(selCh)).name}` : '';
+  const part = dev && inDef(dev).voice ? ` · 파트: ${E.chPart(selCh).name}` : '';
   $('#chanDev').innerHTML = dev ? `${inDef(dev).icon} <b>${inDef(dev).name}${nth}</b> <small>${inDef(dev).sub}${part}</small>` : (c.def.usb && state['ch15/16.lineusb'] ? '🖥️ <b>USB 재생</b>' : '<small>연결된 장비 없음 — 단자를 눌러 장비를 꽂아 보세요</small>');
 }
 // dB → 막대 길이(%)  (−60 ~ +24 dB)
@@ -577,6 +577,16 @@ const BAND = { agt: 1, bass: 1, kick: 1, snr: 1, oh: 1, keys: 1, egt: 1 };
 
 /* 상황별 세팅 (찬양팀 기준 예시) */
 const PRESETS = [
+  // 우리 교회: 싱어 남1·여2 고정, 인도자는 남녀가 주마다 교대 (인도자는 항상 CH 1)
+  // parts: 채널별 파트 번호 (여자 싱어 0 알토 / 1 소프라노 / 2 멜로디, 남자 싱어 0 테너 / 1 옥타브 아래 멜로디 / 2 바리톤)
+  { key: 'churchM', pair: 'churchF', name: '⛪ 우리 교회 · 남자 인도 주', who: '남자 인도 + 싱어 3 (남1·여2) + 밴드',
+    in: { 1: 'mlead', 2: 'fsing', 3: 'fsing', 4: 'msing', 5: 'agt', 6: 'bass', 7: 'kick', 8: 'snr', '9/10': 'oh', '11/12': 'egt', '13/14': 'keys' },
+    parts: { 2: 2, 3: 1, 4: 0 },
+    why: '남자 인도자의 멜로디는 낮아서 여성 회중이 따라 부르기 어려울 수 있습니다. 그래서 여자 싱어 1명이 같은 멜로디를 한 옥타브 위(여성 음역)로 불러 여성 회중의 기준을 잡고, 다른 여자 싱어는 소프라노, 남자 싱어는 테너 화음을 맡습니다.' },
+  { key: 'churchF', pair: 'churchM', name: '⛪ 우리 교회 · 여자 인도 주', who: '여자 인도 + 싱어 3 (남1·여2) + 밴드',
+    in: { 1: 'flead', 2: 'fsing', 3: 'fsing', 4: 'msing', 5: 'agt', 6: 'bass', 7: 'kick', 8: 'snr', '9/10': 'oh', '11/12': 'egt', '13/14': 'keys' },
+    parts: { 2: 0, 3: 1, 4: 1 },
+    why: '여자 인도자의 멜로디는 높아서 남성 회중이 따라 부르기 어려울 수 있습니다. 그래서 남자 싱어가 멜로디를 한 옥타브 아래로 불러 남성 회중의 기준을 잡고, 여자 싱어 2명은 알토(아래)·소프라노(위) 화음을 맡습니다.' },
   { name: '기본 밴드', who: '남자 인도 + 여자 싱어 1 + 밴드',
     in: { 1: 'mlead', 2: 'fsing', 3: 'agt', 4: 'egt', 5: 'bass', 6: 'kick', 7: 'snr', 8: 'oh', '9/10': 'keys', '13/14': 'phone' }, ch: { '13/14': { on: 0 } },
     why: '가장 기본이 되는 밴드 구성입니다. 반주(MR) 채널은 연결만 하고 꺼 두었습니다.' },
@@ -632,6 +642,7 @@ function applyPreset(P) {
     'm.send1': 0.7, 'm.send2': 0.7, 'm.fxOn': 1, 'm.fxSt': 1, 'm.fxFader': 0.62, 'm.fxAux1': 0.35, 'm.fxAux2': 0.35,
     'm.prog': P.prog || 1, 'm.param': P.param != null ? P.param : 0.35, 'm.monLevel': 0.6, 'm.phones': 0.5,
   });
+  E.partIdx = Object.assign({}, P.parts || {});   // 세팅에서 지정한 보컬 파트
   if (P.usbMr) ch('15/16', { lineusb: 1, on: 1, st: 1, fader: 0.66, aux1: 0.5, pre1: 1, aux2: 0.5, pre2: 1 });
   applyAll(s);
   setPlay(true); selectCh('1');
@@ -649,14 +660,22 @@ function showPresetInfo(P) {
   if (sings.length) {
     pts.push(`<b>싱어 묶기</b> 싱어 ${sings.length}명(${sings.map(nm).join(', ')})은 ST 대신 <b>GROUP 3-4</b>로 보냈습니다. GROUP 3-4 페이더 하나로 싱어 전체 볼륨을 조절합니다.`);
     pts.push('<b>볼륨 순서</b> 인도자 페이더를 싱어보다 약 3~4 dB 높게 두어, 회중이 따라갈 멜로디가 먼저 들리게 했습니다.');
-    pts.push('<b>화음 파트</b> ' + sings.map(c => `${nm(c)} ${IN_BY_ID[P.in[c]].tag}: ${voicePart(IN_BY_ID[P.in[c]], E.variant(c)).name}`).join(' · '));
+    pts.push('<b>화음 파트</b> ' + sings.map(c => `${nm(c)} ${IN_BY_ID[P.in[c]].tag}: ${E.chPart(c).name}`).join(' · '));
   }
   if (chs.some(c => BAND[P.in[c]] && DEV_SET[P.in[c]].g12)) pts.push('<b>드럼 묶기</b> 킥·스네어·오버헤드는 GROUP 1-2로 묶었습니다.');
   pts.push('<b>모니터</b> AUX1 = 인도자 모니터(인도자 크게), AUX2 = 싱어 모니터(싱어 크게). 둘 다 PRE라 객석 볼륨을 바꿔도 모니터는 그대로입니다.');
-  $('#infoName').textContent = '⚡ ' + P.name;
+  $('#infoName').textContent = (P.name.startsWith('⛪') ? '' : '⚡ ') + P.name;
   $('#infoVal').textContent = P.who;
   $('#infoDesc').textContent = P.why;
   $('#infoWatch').innerHTML = '<ul class="pPts">' + pts.map(p => `<li>${p}</li>`).join('') + '</ul><p class="pNote">※ 인원 배분과 EQ·볼륨 값은 일반적인 예시입니다. 실제 목소리와 공간에 맞춰 귀로 다듬어 주세요.</p>';
+  if (P.pair) {   // 주간 교대: 반대 인도자 세팅으로 바로 전환
+    const Q = PRESETS.find(x => x.key === P.pair);
+    pts.unshift('<b>주간 교대</b> 인도자는 항상 <b>CH 1</b>에 꽂고, 주마다 인도자 마이크 EQ와 싱어 파트만 바꿉니다. 싱어 채널(CH 2~4) 배치는 그대로라 헷갈리지 않습니다.');
+    $('#infoWatch').innerHTML = '<ul class="pPts">' + pts.map(p => `<li>${p}</li>`).join('') + '</ul><p class="pNote">※ 인원 배분과 EQ·볼륨 값은 일반적인 예시입니다. 실제 목소리와 공간에 맞춰 귀로 다듬어 주세요.</p>';
+    const b = h('button', 'tb accent pSwap', `🔁 ${Q.name.replace('⛪ 우리 교회 · ', '')}로 전환`);
+    b.onclick = () => applyPreset(Q);
+    $('#infoWatch').prepend(b);
+  }
   const more = document.getElementById('infoMore'); if (more) more.hidden = true;
 }
 function menuPresets(el) {

@@ -143,7 +143,7 @@ const SONG = {
 const VOICE_PARTS = {
   lead: { f: [['멜로디', 'lead', 0]], m: [['멜로디 (여성보다 한 옥타브 아래)', 'lead', -12]] },
   sing: {
-    f: [['알토 화음 (멜로디 아래)', 'harm', 0], ['소프라노 화음 (멜로디 위)', 'high', 0], ['멜로디 유니즌', 'lead', 0]],
+    f: [['알토 화음 (멜로디 아래)', 'harm', 0], ['소프라노 화음 (멜로디 위)', 'high', 0], ['멜로디 (여성 음역)', 'lead', 0]],
     m: [['테너 화음', 'harm', 0], ['멜로디 옥타브 아래', 'lead', -12], ['바리톤 화음', 'harm', -12]],
   },
 };
@@ -159,6 +159,7 @@ class Engine {
     this.state = state;            // UI와 공유하는 컨트롤 값
     this.playing = false;
     this.listen = 'house';
+    this.partIdx = {};             // 채널 id → 지정된 보컬 파트 번호
     this.patch = {};               // 채널 id → 입력 장비 인스턴스 (같은 장비를 여러 채널에 꽂을 수 있음)
     this.connOut = {};             // 출력 장비 id → 단자 id
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -413,13 +414,16 @@ class Engine {
     const d = this.patch[chId]; if (!d) return;
     try { d.out.disconnect(); } catch (e) { /* 이미 분리됨 */ }
     if (d.shared) { try { d.shared.disconnect(d.bus); } catch (e) { /* 무시 */ } }
-    delete this.patch[chId]; this.ch[chId].srcType = null;
+    delete this.patch[chId]; delete this.partIdx[chId]; this.ch[chId].srcType = null;
     if (!quiet) this.syncAll();
   }
   // 이 장비가 꽂힌 채널 목록 (채널 순서대로)
   devChannels(devId) { return CHANNELS.map(c => c.id).filter(id => this.patch[id] && this.patch[id].def.id === devId); }
   // 같은 장비 중 몇 번째인지 (0부터)
   variant(chId) { const d = this.patch[chId]; return d ? this.devChannels(d.def.id).indexOf(chId) : 0; }
+  // 채널의 보컬 파트 번호: 세팅에서 지정한 값(partIdx)이 있으면 그것, 없으면 꽂은 순서
+  partNo(chId) { return this.partIdx[chId] != null ? this.partIdx[chId] : this.variant(chId); }
+  chPart(chId) { const d = this.patch[chId]; return d && d.def.voice ? voicePart(d.def, this.partNo(chId)) : null; }
   connectOut(devId, jackId) {
     this.disconnectOut(devId);
     Object.keys(this.connOut).forEach(k => { if (this.connOut[k] === jackId) this.disconnectOut(k); });
@@ -527,7 +531,7 @@ class Engine {
     if (this.nextT < this.ctx.currentTime) this.nextT = this.ctx.currentTime + 0.02;   // 탭이 백그라운드였을 때 보정
     while (this.nextT < this.ctx.currentTime + 0.12) {
       const st = this.step, t = this.nextT;
-      Object.keys(this.patch).forEach(chId => this._play(this.patch[chId].def.id, this.patch[chId].vin, st, t, sd, 1, this.variant(chId)));
+      Object.keys(this.patch).forEach(chId => this._play(this.patch[chId].def.id, this.patch[chId].vin, st, t, sd, 1, this.partNo(chId)));
       if (this.connOut.pc === 'usb') this._play('phone', this.usbGate, st, t, sd, 1);
       this.step = (st + 1) % 64; this.nextT += sd;
     }
