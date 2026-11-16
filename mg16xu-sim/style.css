@@ -300,3 +300,8 @@ em.no { color: #ff8787; font-style: normal; font-weight: 800; }
 body.quizOn #mixer { cursor: crosshair; }
 body.quizOn #mixer * { cursor: crosshair !important; }
 @media (max-width: 700px) { #drawer { width: 100vw; } }
+/* 상황별 세팅 설명 */
+.pPts { margin: 6px 0 0; padding-left: 18px; }
+.pPts li { margin: 5px 0; line-height: 1.55; }
+.pNote { margin: 8px 0 0; font-size: 11.5px; color: #9fb4d0; }
+#menu .mi small { max-width: 150px; }

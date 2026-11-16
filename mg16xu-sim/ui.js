@@ -316,7 +316,7 @@ function showMenu(anchor, title, items) {
   m.style.top = (r.bottom + mh + 8 > window.innerHeight ? Math.max(8, r.top - mh - 6) : r.bottom + 6) + 'px';
 }
 function hideMenu() { $('#menu').hidden = true; }
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#menu') && !e.target.closest('.jack') && !e.target.closest('.dev')) hideMenu(); });
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#menu') && !e.target.closest('.jack') && !e.target.closest('.dev') && !e.target.closest('#btnPreset')) hideMenu(); });
 
 async function plugIn(devId, chId) {
   if (inDef(devId).real && !(await E.enableRealMic())) { alert('마이크 사용 권한이 없어서 연결하지 못했습니다. 브라우저의 마이크 권한을 허용해 주세요.'); return; }
@@ -383,7 +383,7 @@ function refreshConn() {
     e.jack.classList.toggle('plug', !!dev);
     e.jack.style.setProperty('--c', dev ? devEls[dev].color : 'transparent');
     const many = dev && E.devChannels(dev).length > 1;   // 같은 장비가 여러 개면 번호를 붙임
-    e.tape.textContent = dev ? inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '') + (many ? ' ' + (E.variant(c.id) + 1) : '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
+    e.tape.textContent = dev ? (inDef(dev).tag || inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '')) + (many ? ' ' + (E.variant(c.id) + 1) : '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
   });
   OUT_JACKS.forEach(j => {
     const dev = E.jackDevice(j.id), b = jackEls[j.id];
@@ -422,7 +422,8 @@ function updateChanHead() {
   if (!E) return;
   const dev = E.chDevice(selCh), c = E.ch[selCh];
   const nth = dev && E.devChannels(dev).length > 1 ? ` ${E.variant(selCh) + 1}` : '';
-  $('#chanDev').innerHTML = dev ? `${inDef(dev).icon} <b>${inDef(dev).name}${nth}</b> <small>${inDef(dev).sub}</small>` : (c.def.usb && state['ch15/16.lineusb'] ? '🖥️ <b>USB 재생</b>' : '<small>연결된 장비 없음 — 단자를 눌러 장비를 꽂아 보세요</small>');
+  const part = dev && inDef(dev).voice ? ` · 파트: ${voicePart(inDef(dev), E.variant(selCh)).name}` : '';
+  $('#chanDev').innerHTML = dev ? `${inDef(dev).icon} <b>${inDef(dev).name}${nth}</b> <small>${inDef(dev).sub}${part}</small>` : (c.def.usb && state['ch15/16.lineusb'] ? '🖥️ <b>USB 재생</b>' : '<small>연결된 장비 없음 — 단자를 눌러 장비를 꽂아 보세요</small>');
 }
 // dB → 막대 길이(%)  (−60 ~ +24 dB)
 const barPct = d => clamp((d + 60) / 84) * 100;
@@ -555,36 +556,113 @@ function loop() {
 /* ---------- 프리셋 ---------- */
 function resetControls() { Object.keys(C).forEach(id => { state[id] = C[id].def; paint(id); }); E.syncAll(); }
 function unplugAll() { Object.keys(E.patch).forEach(k => E.disconnectCh(k)); Object.keys(E.connOut).forEach(k => E.disconnectOut(k)); }
-const WIRING_IN = { vox: '1', cho: '2', agt: '3', egt: '4', bass: '5', kick: '6', snr: '7', oh: '8', keys: '9/10', phone: '13/14' };
 const WIRING_OUT = { mainL: 'stL', mainR: 'stR', wedge1: 'aux1', wedge2: 'aux2', boothL: 'monL', boothR: 'monR', hp: 'phones', pc: 'usb' };
-function wire() {
+
+/* 장비별 기본 세팅값 (EQ 노브 0.5 = 0 dB, MID 주파수: 0.06 ≈ 300 Hz, 0.83 ≈ 3 kHz) */
+const DEV_SET = {
+  mlead: { hpf: 1, comp: 0.4, on: 1, st: 1, fader: 0.78, aux1: 0.75, pre1: 1, aux2: 0.55, pre2: 1, fx: 0.62, mid: 0.42, midf: 0.06, high: 0.56 },
+  flead: { hpf: 1, comp: 0.4, on: 1, st: 1, fader: 0.78, aux1: 0.75, pre1: 1, aux2: 0.55, pre2: 1, fx: 0.62, mid: 0.44, midf: 0.83, low: 0.42 },
+  msing: { hpf: 1, comp: 0.3, on: 1, g34: 1, fader: 0.7, aux1: 0.45, pre1: 1, aux2: 0.7, pre2: 1, fx: 0.55, mid: 0.44, midf: 0.06, low: 0.45 },
+  fsing: { hpf: 1, comp: 0.3, on: 1, g34: 1, fader: 0.7, aux1: 0.45, pre1: 1, aux2: 0.7, pre2: 1, fx: 0.55, mid: 0.45, midf: 0.83, low: 0.4 },
+  agt: { hpf: 1, on: 1, st: 1, fader: 0.66, pan: 0.3, aux1: 0.5, pre1: 1, aux2: 0.35, pre2: 1, fx: 0.4, low: 0.42 },
+  egt: { hpf: 1, on: 1, st: 1, fader: 0.62, pan: 0.72, aux2: 0.35, pre2: 1, mid: 0.56 },
+  bass: { comp: 0.4, on: 1, st: 1, fader: 0.72, aux1: 0.4, pre1: 1 },
+  kick: { on: 1, g12: 1, fader: 0.75, low: 0.58 },
+  snr: { hpf: 1, on: 1, g12: 1, fader: 0.7, fx: 0.45 },
+  oh: { hpf: 1, on: 1, g12: 1, fader: 0.66, high: 0.58 },
+  keys: { on: 1, st: 1, fader: 0.66, aux1: 0.45, pre1: 1, aux2: 0.4, pre2: 1 },
+  phone: { on: 1, st: 1, fader: 0.68, aux1: 0.5, pre1: 1, aux2: 0.5, pre2: 1 },
+};
+const BAND = { agt: 1, bass: 1, kick: 1, snr: 1, oh: 1, keys: 1, egt: 1 };
+
+/* 상황별 세팅 (찬양팀 기준 예시) */
+const PRESETS = [
+  { name: '기본 밴드', who: '남자 인도 + 여자 싱어 1 + 밴드',
+    in: { 1: 'mlead', 2: 'fsing', 3: 'agt', 4: 'egt', 5: 'bass', 6: 'kick', 7: 'snr', 8: 'oh', '9/10': 'keys', '13/14': 'phone' }, ch: { '13/14': { on: 0 } },
+    why: '가장 기본이 되는 밴드 구성입니다. 반주(MR) 채널은 연결만 하고 꺼 두었습니다.' },
+  { name: '남자 인도 + 여자 싱어 2', who: '보컬 3 (남1·여2) + 밴드',
+    in: { 1: 'mlead', 2: 'fsing', 3: 'fsing', 4: 'agt', 5: 'bass', 6: 'kick', 7: 'snr', 8: 'oh', '9/10': 'keys', '11/12': 'egt' },
+    why: '남성 멜로디는 음역이 낮아 여성 회중이 따라 부르기 어려울 수 있습니다. 여자 싱어 2명이 알토(아래)·소프라노(위) 화음으로 위쪽 음역을 채워 줍니다.' },
+  { name: '남자 인도 + 싱어 3 (여2·남1)', who: '보컬 4 (남2·여2) + 밴드',
+    in: { 1: 'mlead', 2: 'fsing', 3: 'fsing', 4: 'msing', 5: 'agt', 6: 'bass', 7: 'kick', 8: 'snr', '9/10': 'oh', '11/12': 'egt', '13/14': 'keys' },
+    why: '여자 싱어 2명(알토·소프라노)이 위 음역을, 남자 싱어 1명(테너)이 가운데를 채워 4성부에 가까운 화음을 만듭니다. 마이크 입력 10개를 모두 쓰는 구성이라 오버헤드는 CH 9/10, 일렉기타는 11/12, 키보드는 라인 전용 13/14로 보냈습니다.' },
+  { name: '여자 인도 + 남자 싱어 2', who: '보컬 3 (여1·남2) + 밴드',
+    in: { 1: 'flead', 2: 'msing', 3: 'msing', 4: 'agt', 5: 'bass', 6: 'kick', 7: 'snr', 8: 'oh', '9/10': 'keys', '11/12': 'egt' },
+    why: '여성 멜로디는 음역이 높아 남성 회중이 따라 부르기 어려울 수 있습니다. 남자 싱어 1번은 테너 화음, 2번은 멜로디를 한 옥타브 아래로 불러 남성 회중의 기준 음을 잡아 줍니다.' },
+  { name: '여자 인도 + 싱어 3 (남2·여1)', who: '보컬 4 (여2·남2) + 밴드',
+    in: { 1: 'flead', 2: 'msing', 3: 'msing', 4: 'fsing', 5: 'agt', 6: 'bass', 7: 'kick', 8: 'snr', '9/10': 'oh', '11/12': 'egt', '13/14': 'keys' },
+    why: '남자 싱어 2명(테너·옥타브 아래 멜로디)이 아래 음역을 받치고, 여자 싱어 1명(알토)이 인도자 바로 아래 화음을 채웁니다.' },
+  { name: '남녀 공동 인도 + 싱어 2', who: '보컬 4 (인도 남1·여1, 싱어 여1·남1) + 밴드',
+    in: { 1: 'mlead', 2: 'flead', 3: 'fsing', 4: 'msing', 5: 'agt', 6: 'bass', 7: 'kick', 8: 'snr', '9/10': 'oh', '11/12': 'egt', '13/14': 'keys' },
+    ch: { 1: { pan: 0.45, fader: 0.76 }, 2: { pan: 0.55, fader: 0.76 } },
+    why: '두 인도자가 같은 멜로디를 옥타브 차이로 부르므로 둘 다 ST로 보내고 페이더를 비슷하게 맞춥니다. 좌우로 아주 조금만 벌려 겹침을 줄였습니다. 싱어는 남녀 1명씩 화음을 맡습니다.' },
+  { name: '어쿠스틱 소규모', who: '여자 인도 + 남자 싱어 1 + 통기타·베이스·건반',
+    in: { 1: 'flead', 2: 'msing', 3: 'agt', 4: 'bass', '13/14': 'keys' }, prog: 7, param: 0.45,
+    ch: { 3: { fader: 0.72, pan: 0.4 }, '13/14': { pan: 0.6 } },
+    why: '드럼 없는 작은 모임용입니다. 악기 소리가 작으니 통기타를 조금 올리고, 리버브는 REV PLATE로 조금 길게 걸었습니다. 남자 싱어 1명이 테너 화음으로 받칩니다.' },
+  { name: 'MR 반주 (노트북 USB)', who: '남자 인도 + 여자 싱어 2 + 노트북 MR',
+    in: { 1: 'mlead', 2: 'fsing', 3: 'fsing' }, usbMr: true, prog: 2,
+    why: '밴드 없이 노트북 MR로 진행합니다. CH 15/16을 USB로 전환해 노트북 소리를 받고, MR이 목소리를 덮지 않도록 MR 페이더를 보컬보다 낮게 둡니다.' },
+];
+
+function wire(P = PRESETS[0]) {
   unplugAll();
-  Object.keys(WIRING_IN).forEach(k => E.connectIn(k, WIRING_IN[k]));
+  Object.keys(P.in).forEach(ch => E.connectIn(P.in[ch], ch));
   Object.keys(WIRING_OUT).forEach(k => E.connectOut(k, WIRING_OUT[k]));
 }
 function applyAll(obj) { Object.keys(obj).forEach(id => { if (C[id]) { state[id] = obj[id]; paint(id); } }); E.syncAll(); refreshConn(); }
-function presetBand() {
-  resetControls(); wire();
+// 게인: 장비 레벨에 맞춰 프리앰프 후 피크가 0 dB 근처가 되도록 (라인 기기는 PAD/LINE으로 26 dB 낮춤)
+const gainFor = (lv, pad) => clamp((-3 - lv - 16 + (pad ? 26 : 0)) / 44);
+function applyPreset(P) {
+  resetControls(); wire(P);
   const s = {}, ch = (id, o) => Object.keys(o).forEach(k => { s[`ch${id}.${k}`] = o[k]; });
-  // 게인: 장비 레벨에 맞춰 프리앰프 후 피크가 0 dB 근처가 되도록
-  const gainFor = (lv, pad) => clamp((-3 - lv - 16 + (pad ? 26 : 0)) / 44);
-  ch('1', { gain: gainFor(-40), hpf: 1, comp: 0.35, high: 0.56, on: 1, st: 1, fader: 0.76, aux1: 0.7, pre1: 1, aux2: 0.5, pre2: 1, fx: 0.62 });
-  ch('2', { gain: gainFor(-42), hpf: 1, comp: 0.3, on: 1, st: 1, fader: 0.68, pan: 0.4, aux1: 0.5, pre1: 1, aux2: 0.7, pre2: 1, fx: 0.6 });
-  ch('3', { gain: gainFor(-36), hpf: 1, on: 1, st: 1, fader: 0.66, pan: 0.3, aux1: 0.5, pre1: 1, fx: 0.4, low: 0.42 });
-  ch('4', { gain: gainFor(-34), hpf: 1, on: 1, st: 1, fader: 0.62, pan: 0.72, aux2: 0.5, pre2: 1, mid: 0.56 });
-  ch('5', { gain: gainFor(-30), comp: 0.4, on: 1, st: 1, fader: 0.72, aux1: 0.4, pre1: 1 });
-  ch('6', { gain: gainFor(-28), on: 1, g12: 1, fader: 0.75, low: 0.58 });
-  ch('7', { gain: gainFor(-30), hpf: 1, on: 1, g12: 1, fader: 0.7, fx: 0.45 });
-  ch('8', { gain: gainFor(-38), hpf: 1, on: 1, g12: 1, fader: 0.66, high: 0.58 });
-  ch('9/10', { gain: gainFor(-2, true), on: 1, st: 1, fader: 0.66, aux1: 0.45, pre1: 1 });
-  ch('13/14', { on: 0, st: 1, fader: 0.6 });
-  Object.assign(s, {
-    'm.phantom': 1, 'm.stOn': 1, 'm.stFader': 0.72, 'm.g12Fader': 0.75, 'm.g12St': 1,
-    'm.send1': 0.7, 'm.send2': 0.7, 'm.fxOn': 1, 'm.fxSt': 1, 'm.fxFader': 0.62, 'm.fxAux1': 0.4,
-    'm.prog': 1, 'm.param': 0.35, 'm.monLevel': 0.6, 'm.phones': 0.5,
+  const singers = Object.keys(P.in).filter(c => IN_BY_ID[P.in[c]].role === 'sing');
+  Object.keys(P.in).forEach(c => {
+    const dev = IN_BY_ID[P.in[c]], def = CHANNELS.find(x => x.id === c), o = Object.assign({}, DEV_SET[dev.id]);
+    if (def.gain) { o.gain = gainFor(dev.level, dev.type === 'line'); if (dev.type === 'line' && def.pad) o.pad = 1; }
+    const k = singers.indexOf(c);   // 싱어는 좌우로 조금씩 벌림
+    if (k >= 0) o.pan = 0.5 + (k - (singers.length - 1) / 2) * 0.14;
+    ch(c, Object.assign(o, (P.ch || {})[c]));
   });
+  const has = f => Object.values(P.in).some(f);
+  Object.assign(s, {
+    'm.phantom': has(d => IN_BY_ID[d].phantom) ? 1 : 0, 'm.stOn': 1, 'm.stFader': 0.66,
+    'm.g12Fader': 0.75, 'm.g12St': has(d => DEV_SET[d].g12) ? 1 : 0,
+    'm.g34Fader': 0.75, 'm.g34St': singers.length ? 1 : 0,
+    'm.send1': 0.7, 'm.send2': 0.7, 'm.fxOn': 1, 'm.fxSt': 1, 'm.fxFader': 0.62, 'm.fxAux1': 0.35, 'm.fxAux2': 0.35,
+    'm.prog': P.prog || 1, 'm.param': P.param != null ? P.param : 0.35, 'm.monLevel': 0.6, 'm.phones': 0.5,
+  });
+  if (P.usbMr) ch('15/16', { lineusb: 1, on: 1, st: 1, fader: 0.66, aux1: 0.5, pre1: 1, aux2: 0.5, pre2: 1 });
   applyAll(s);
   setPlay(true); selectCh('1');
+  showPresetInfo(P);
+}
+// 적용한 세팅의 포인트를 정보 카드에 표시
+function showPresetInfo(P) {
+  lastInfo = null;
+  document.querySelectorAll('.hot').forEach(e => e.classList.remove('hot'));
+  const chs = Object.keys(P.in), pts = [];
+  const leads = chs.filter(c => IN_BY_ID[P.in[c]].role === 'lead'), sings = chs.filter(c => IN_BY_ID[P.in[c]].role === 'sing');
+  const nm = c => `CH ${c}`;
+  if (leads.some(c => IN_BY_ID[P.in[c]].voice === 'm')) pts.push('<b>남자 인도자 EQ</b> MID를 300 Hz 근처에서 살짝 줄여 웅웅거림을 정리하고, HIGH를 조금 올려 가사를 또렷하게 했습니다.');
+  if (leads.some(c => IN_BY_ID[P.in[c]].voice === 'f')) pts.push('<b>여자 인도자 EQ</b> MID를 3 kHz 근처에서 살짝 줄여 고음의 쏘는 느낌을 줄이고, LOW도 조금 줄였습니다.');
+  if (sings.length) {
+    pts.push(`<b>싱어 묶기</b> 싱어 ${sings.length}명(${sings.map(nm).join(', ')})은 ST 대신 <b>GROUP 3-4</b>로 보냈습니다. GROUP 3-4 페이더 하나로 싱어 전체 볼륨을 조절합니다.`);
+    pts.push('<b>볼륨 순서</b> 인도자 페이더를 싱어보다 약 3~4 dB 높게 두어, 회중이 따라갈 멜로디가 먼저 들리게 했습니다.');
+    pts.push('<b>화음 파트</b> ' + sings.map(c => `${nm(c)} ${IN_BY_ID[P.in[c]].tag}: ${voicePart(IN_BY_ID[P.in[c]], E.variant(c)).name}`).join(' · '));
+  }
+  if (chs.some(c => BAND[P.in[c]] && DEV_SET[P.in[c]].g12)) pts.push('<b>드럼 묶기</b> 킥·스네어·오버헤드는 GROUP 1-2로 묶었습니다.');
+  pts.push('<b>모니터</b> AUX1 = 인도자 모니터(인도자 크게), AUX2 = 싱어 모니터(싱어 크게). 둘 다 PRE라 객석 볼륨을 바꿔도 모니터는 그대로입니다.');
+  $('#infoName').textContent = '⚡ ' + P.name;
+  $('#infoVal').textContent = P.who;
+  $('#infoDesc').textContent = P.why;
+  $('#infoWatch').innerHTML = '<ul class="pPts">' + pts.map(p => `<li>${p}</li>`).join('') + '</ul><p class="pNote">※ 인원 배분과 EQ·볼륨 값은 일반적인 예시입니다. 실제 목소리와 공간에 맞춰 귀로 다듬어 주세요.</p>';
+  const more = document.getElementById('infoMore'); if (more) more.hidden = true;
+}
+function menuPresets(el) {
+  showMenu(el, '⚡ 상황별 세팅 — 고르면 연결과 믹스가 한 번에 잡힙니다', PRESETS.map(P => ({
+    label: P.name, sub: P.who, act: async () => { if (!power) await setPower(true); applyPreset(P); },
+  })));
 }
 
 /* ---------- 상단 바 ---------- */
@@ -629,7 +707,7 @@ function init() {
   E.outVol.gain.value = Math.pow(0.7, 2) * 1.6;
   $('#zoom').addEventListener('input', e => { userZoom = true; mx.style.zoom = e.target.value / 100; });
   $('#btnWire').addEventListener('click', () => { resetControls(); wire(); refreshConn(); selectCh('1'); });
-  $('#btnPreset').addEventListener('click', async () => { if (!power) await setPower(true); presetBand(); });
+  $('#btnPreset').addEventListener('click', e => menuPresets(e.currentTarget));
   $('#btnReset').addEventListener('click', () => { setPlay(false); unplugAll(); resetControls(); refreshConn(); });
   $('#btnHelp').addEventListener('click', () => { $('#help').hidden = false; });
   $('#helpClose').addEventListener('click', () => { $('#help').hidden = true; });

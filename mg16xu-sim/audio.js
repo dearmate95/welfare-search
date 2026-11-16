@@ -69,8 +69,11 @@ const progValue = (prog, p) => prog.cfg.min + (prog.cfg.max - prog.cfg.min) * p;
 /* ---------- 가상 입력 장비(음원) ---------- */
 // level: 0 dB(REF) 기준 출력 레벨. 마이크는 매우 작고(-40 dB 안팎), 라인은 크다.
 const IN_DEVS = [
-  { id: 'vox', name: '보컬 마이크', sub: '다이내믹', icon: '🎤', type: 'mic', level: -40, norm: 1.7 },
-  { id: 'cho', name: '코러스 마이크', sub: '다이내믹', icon: '🎙️', type: 'mic', level: -42, norm: 1.75 },
+  // voice: 성별(m/f), role: lead(인도자, 멜로디) / sing(싱어, 화음)
+  { id: 'mlead', name: '인도자 마이크 (남)', tag: '인도(남)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'm', role: 'lead', level: -40, norm: 1.7 },
+  { id: 'flead', name: '인도자 마이크 (여)', tag: '인도(여)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'f', role: 'lead', level: -40, norm: 1.7 },
+  { id: 'msing', name: '싱어 마이크 (남)', tag: '싱어(남)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'm', role: 'sing', level: -42, norm: 1.75 },
+  { id: 'fsing', name: '싱어 마이크 (여)', tag: '싱어(여)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'f', role: 'sing', level: -42, norm: 1.75 },
   { id: 'agt', name: '통기타 마이크', sub: '콘덴서 · +48V 필요', icon: '🪕', type: 'mic', phantom: true, level: -36, norm: 1.85 },
   { id: 'egt', name: '일렉기타 앰프 마이크', sub: '다이내믹', icon: '🎸', type: 'mic', level: -34, norm: 0.43 },
   { id: 'bass', name: '베이스 (DI 박스)', sub: '마이크 레벨', icon: '🎻', type: 'mic', level: -30, norm: 1.5 },
@@ -132,8 +135,24 @@ const SONG = {
   chords: [[48, 52, 55, 60], [43, 50, 55, 59], [45, 52, 57, 60], [41, 48, 53, 57]],
   bass: [36, 31, 33, 29],
   lead: [[0, 6, 64], [6, 4, 67], [10, 6, 72], [16, 6, 71], [22, 4, 67], [26, 6, 62], [32, 6, 64], [38, 4, 69], [42, 6, 72], [48, 8, 69], [56, 7, 65]],
-  harm: [[0, 14, 67], [16, 14, 62], [32, 14, 64], [48, 14, 60]],
+  harm: [[0, 14, 67], [16, 14, 62], [32, 14, 64], [48, 14, 60]],   // 멜로디 아래 화음
+  high: [[0, 14, 72], [16, 14, 74], [32, 14, 72], [48, 14, 72]],   // 멜로디 위 화음
 };
+
+/* 보컬 파트: 같은 장비를 여러 개 꽂으면 순서대로 다음 파트를 맡음 [파트 이름, 악보, 옥타브 이동(반음)] */
+const VOICE_PARTS = {
+  lead: { f: [['멜로디', 'lead', 0]], m: [['멜로디 (여성보다 한 옥타브 아래)', 'lead', -12]] },
+  sing: {
+    f: [['알토 화음 (멜로디 아래)', 'harm', 0], ['소프라노 화음 (멜로디 위)', 'high', 0], ['멜로디 유니즌', 'lead', 0]],
+    m: [['테너 화음', 'harm', 0], ['멜로디 옥타브 아래', 'lead', -12], ['바리톤 화음', 'harm', -12]],
+  },
+};
+function voicePart(def, variant) {
+  const list = VOICE_PARTS[def.role][def.voice], [name, key, shift] = list[variant % list.length];
+  return { name, notes: SONG[key], shift };
+}
+const IN_BY_ID = {};   // 입력 장비 id → 정의
+IN_DEVS.forEach(d => { IN_BY_ID[d.id] = d; });
 
 class Engine {
   constructor(state) {
@@ -353,11 +372,11 @@ class Engine {
   _mkVoiceChain(d) {
     const ctx = this.ctx, id = d.def.id;
     const bp = (f, q, g) => { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const o = this.gain(g); b.connect(o); o.connect(d.bus); return b; };
-    if (id === 'vox' || id === 'cho') {
+    if (d.def.voice) {   // 사람 목소리: 성별에 따라 포먼트(모음 공명) 위치가 다름
       d.vin = this.gain(1);
-      const fm = id === 'vox' ? [[780, 7, 1], [1180, 8, 0.6], [2850, 9, 0.35]] : [[600, 7, 1], [1000, 8, 0.5], [2600, 9, 0.3]];
+      const fm = d.def.voice === 'f' ? [[800, 7, 1], [1200, 8, 0.6], [2900, 9, 0.35]] : [[600, 7, 1], [1050, 8, 0.55], [2500, 9, 0.3]];
       fm.forEach(([f, q, g]) => d.vin.connect(bp(f, q, g * 3)));
-      const air = ctx.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = 500; const ag = this.gain(0.5);
+      const air = ctx.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = d.def.voice === 'f' ? 500 : 380; const ag = this.gain(0.5);
       d.vin.connect(air); air.connect(ag); ag.connect(d.bus);   // 몸통 저역
     } else if (id === 'egt') {
       d.vin = this.gain(3);
@@ -573,9 +592,14 @@ class Engine {
     l.connect(lg); lg.connect(o.detune); l.start(t + 0.15); l.stop(t + dur + 0.05);   // 비브라토
   }
   // 장비별 연주 패턴
-  // variant: 같은 장비의 몇 번째 인스턴스인지 (보컬·코러스는 번호마다 다른 파트를 부름)
+  // variant: 같은 장비의 몇 번째 인스턴스인지 (보컬은 번호마다 다른 파트를 부름)
   _play(id, dest, step, t, sd, v, variant = 0) {
-    const bar = step >> 4, s = step & 15, ch = SONG.chords[bar];
+    const bar = step >> 4, s = step & 15, ch = SONG.chords[bar], def = IN_BY_ID[id];
+    if (def && def.voice) {
+      const p = voicePart(def, variant);
+      p.notes.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m + p.shift, len * sd, v * 0.5); });
+      return;
+    }
     switch (id) {
       case 'kick': if (s === 0 || s === 8 || (s === 10 && bar % 2)) this.vKick(dest, t, v); break;
       case 'snr': if (s === 4 || s === 12) this.vSnare(dest, t, v); break;
@@ -588,13 +612,6 @@ class Engine {
       case 'egt': if ([0, 3, 6, 10, 12].includes(s)) this.vGtr(dest, t, SONG.bass[bar] + 12, sd * 2.2, v * 0.25); break;
       case 'agt': if (s % 2 === 0) this.vStrum(dest, t, ch, v * (s % 4 === 0 ? 0.17 : 0.1), s % 4 === 2); break;
       case 'keys': if (s === 0 || s === 10) this.vKeys(dest, t, ch, sd * 9, v * 0.28); break;
-      case 'vox': case 'cho': {
-        // 파트 순환: 보컬 = 멜로디 → 화음 → 낮은 멜로디, 코러스 = 화음 → 멜로디 → 낮은 화음
-        const k = (variant + (id === 'cho' ? 1 : 0)) % 3, part = k === 1 ? SONG.harm : SONG.lead;
-        const shift = variant >= 2 ? -12 : k === 2 ? -12 : 0;
-        part.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m + shift, len * sd, v * 0.5); });
-        break;
-      }
       case 'phone':   // 반주 음원: 드럼 + 베이스 + 건반이 이미 섞여 있는 스테레오 음원
         if (s === 0 || s === 8) this.vKick(dest, t, v * 0.55);
         if (s === 4 || s === 12) this.vSnare(dest, t, v * 0.4);
