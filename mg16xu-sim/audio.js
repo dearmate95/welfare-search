@@ -649,7 +649,8 @@ class Engine {
     if (def && def.voice) {
       const p = voicePart(def, variant);
       const vw = LYRIC[p.key];
-      p.notes.forEach(([st, len, m], i) => { if (st === step) this.vVox(inst, t, m + p.shift, len * sd, v * 0.5, vw[i % vw.length]); });
+      const lvl = def.voice === 'f' ? { harm: 4, high: 2.2, lead: 1.5 }[p.key] : 1;   // 여성 파트별 음량 보정(음역에 따라 포먼트 통과량이 달라서)
+      p.notes.forEach(([st, len, m], i) => { if (st === step) this.vVox(inst, t, m + p.shift, len * sd, v * 0.5 * lvl, vw[i % vw.length]); });
       return;
     }
     switch (id) {
