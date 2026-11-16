@@ -661,7 +661,7 @@ function applyPreset(P) {
   E.partIdx = Object.assign({}, P.parts || {});   // 세팅에서 지정한 보컬 파트
   if (P.usbMr) ch('15/16', { lineusb: 1, on: 1, st: 1, fader: 0.66, aux1: 0.5, pre1: 1, aux2: 0.5, pre2: 1 });
   applyAll(s);
-  setPlay(true); selectCh('1');
+  selectCh('1');   // 전원과 연주 시작은 사용자가 직접 선택
   showPresetInfo(P);
 }
 // 적용한 세팅의 포인트를 정보 카드에 표시
@@ -692,11 +692,12 @@ function showPresetInfo(P) {
     b.onclick = () => applyPreset(Q);
     $('#infoWatch').prepend(b);
   }
+  if (!power || !E.playing) $('#infoWatch').insertAdjacentHTML('beforeend', '<p class="pNote">▶ 소리를 들으려면 ⏻ POWER를 켜고 「연주 시작」을 누르세요. 누르기 전에도 노브·EQ 곡선 등 세팅값은 그대로 볼 수 있습니다.</p>');
   const more = document.getElementById('infoMore'); if (more) more.hidden = true;
 }
 function menuPresets(el) {
   showMenu(el, '⚡ 상황별 세팅 — 고르면 연결과 믹스가 한 번에 잡힙니다', PRESETS.map(P => ({
-    label: P.name, sub: P.who, act: async () => { if (!power) await setPower(true); applyPreset(P); },
+    label: P.name, sub: P.who, act: () => applyPreset(P),
   })));
 }
 
@@ -732,7 +733,7 @@ function init() {
   E.syncAll(); refreshConn(); selCh = ''; selectCh('1');
 
   $('#btnPower').addEventListener('click', () => setPower(!power));
-  $('#btnPlay').addEventListener('click', async () => { if (!power) await setPower(true); setPlay(!E.playing); });
+  $('#btnPlay').addEventListener('click', () => setPlay(!E.playing));
   $('#listenSeg').addEventListener('click', e => {
     const b = e.target.closest('button[data-pos]'); if (!b) return;
     [...$('#listenSeg').querySelectorAll('button')].forEach(x => x.classList.toggle('on', x === b));
