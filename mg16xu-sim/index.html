@@ -26,6 +26,7 @@
   <button id="btnPreset" class="tb accent">⚡ 밴드 세팅 한번에</button>
   <button id="btnReset" class="tb">↺ 초기화</button>
   <label class="vol" title="믹서 크기">🔍 <input id="zoom" type="range" min="45" max="130" value="100"></label>
+  <button id="btnDict" class="tb accent2">📖 기능 사전 · 퀴즈</button>
   <button id="btnHelp" class="tb">? 사용법</button>
 </header>
 
@@ -45,6 +46,7 @@
       <div id="infoVal"></div>
       <p id="infoDesc">노브는 위아래로 드래그(또는 휠), 버튼은 클릭, 페이더는 드래그합니다. 더블클릭하면 기본값으로 돌아갑니다.</p>
       <p id="infoWatch"></p>
+      <button id="infoMore" class="tb small" hidden>📖 사전에서 자세히 보기</button>
     </section>
     <section class="card" id="chanCard">
       <h4>채널 분석 <select id="chanSel"></select></h4>
@@ -78,6 +80,7 @@
       <li><b>입력 장비 카드</b>를 눌러 채널에 꽂고, <b>출력 장비 카드</b>를 눌러 STEREO OUT·AUX SEND 등에 꽂습니다. 믹서의 단자를 직접 눌러도 됩니다.</li>
       <li><b>▶ 연주 시작</b>을 누르면 연결된 장비에서 신호가 나옵니다.</li>
       <li>GAIN → ON → 채널 페이더 → ST 스위치 → STEREO ON → STEREO 페이더 순으로 올려 소리를 냅니다.</li>
+      <li><b>📖 기능 사전 · 퀴즈</b>에서 버튼·노브·페이더 이름별 기능을 공부하고, 퀴즈로 위치와 이름을 익힐 수 있습니다.</li>
       <li>오른쪽 패널에서 구간별 레벨, EQ 곡선, 컴프레서 동작, 신호 경로 점검표가 실시간으로 바뀝니다.</li>
     </ol>
     <p><b>조작</b> · 노브: 위/아래 드래그 또는 마우스 휠 (Shift = 미세 조정) · 버튼: 클릭 · 페이더: 드래그 · 더블클릭: 기본값</p>
@@ -90,5 +93,6 @@
 
 <script src="audio.js"></script>
 <script src="ui.js"></script>
+<script src="learn.js"></script>
 </body>
 </html>
