@@ -70,10 +70,10 @@ const progValue = (prog, p) => prog.cfg.min + (prog.cfg.max - prog.cfg.min) * p;
 // level: 0 dB(REF) 기준 출력 레벨. 마이크는 매우 작고(-40 dB 안팎), 라인은 크다.
 const IN_DEVS = [
   // voice: 성별(m/f), role: lead(인도자, 멜로디) / sing(싱어, 화음)
-  { id: 'mlead', name: '인도자 마이크 (남)', tag: '인도(남)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'm', role: 'lead', level: -40, norm: 1.7 },
-  { id: 'flead', name: '인도자 마이크 (여)', tag: '인도(여)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'f', role: 'lead', level: -40, norm: 1.7 },
-  { id: 'msing', name: '싱어 마이크 (남)', tag: '싱어(남)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'm', role: 'sing', level: -42, norm: 1.75 },
-  { id: 'fsing', name: '싱어 마이크 (여)', tag: '싱어(여)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'f', role: 'sing', level: -42, norm: 1.75 },
+  { id: 'mlead', name: '인도자 마이크 (남)', tag: '인도(남)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'm', role: 'lead', level: -40, norm: 1.3 },
+  { id: 'flead', name: '인도자 마이크 (여)', tag: '인도(여)', sub: '다이내믹 · 멜로디', icon: '🎤', type: 'mic', voice: 'f', role: 'lead', level: -40, norm: 0.5 },
+  { id: 'msing', name: '싱어 마이크 (남)', tag: '싱어(남)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'm', role: 'sing', level: -42, norm: 1.45 },
+  { id: 'fsing', name: '싱어 마이크 (여)', tag: '싱어(여)', sub: '다이내믹 · 화음', icon: '🎙️', type: 'mic', voice: 'f', role: 'sing', level: -42, norm: 0.5 },
   { id: 'agt', name: '통기타 마이크', sub: '콘덴서 · +48V 필요', icon: '🪕', type: 'mic', phantom: true, level: -36, norm: 1.85 },
   { id: 'egt', name: '일렉기타 앰프 마이크', sub: '다이내믹', icon: '🎸', type: 'mic', level: -34, norm: 0.43 },
   { id: 'bass', name: '베이스 (DI 박스)', sub: '마이크 레벨', icon: '🎻', type: 'mic', level: -30, norm: 1.5 },
@@ -84,6 +84,7 @@ const IN_DEVS = [
   { id: 'phone', name: '스마트폰 반주(MR)', sub: '스테레오 라인', icon: '📱', type: 'line', stereo: true, level: -6, norm: 1.05 },
   { id: 'tone', name: '테스트 톤 1 kHz', sub: '라인 · 0 dB', icon: '〰️', type: 'line', level: 0, norm: 0.707 },
   { id: 'pink', name: '핑크 노이즈', sub: '라인', icon: '🌫️', type: 'line', level: -6, norm: 0.46 },
+  { id: 'file', name: '녹음 파일 (실제 목소리)', tag: '녹음', sub: '내 음원 불러오기 · 여러 개 가능', icon: '📁', type: 'mic', level: -40, norm: 1, file: true },
   { id: 'real', name: '내 컴퓨터 마이크', sub: '실제 마이크 입력', icon: '💻', type: 'mic', level: -40, norm: 1, real: true },
 ];
 
@@ -149,8 +150,16 @@ const VOICE_PARTS = {
 };
 function voicePart(def, variant) {
   const list = VOICE_PARTS[def.role][def.voice], [name, key, shift] = list[variant % list.length];
-  return { name, notes: SONG[key], shift };
+  return { name, notes: SONG[key], shift, key };
 }
+/* 모음별 포먼트(성도 공명) 주파수 [F1, F2, F3, F4] — 목소리가 '아/에/이/오/우'로 들리게 하는 핵심 */
+const VOWELS = {
+  m: { a: [700, 1150, 2600, 3300], e: [450, 1750, 2550, 3300], i: [300, 2100, 2850, 3400], o: [450, 850, 2550, 3200], u: [340, 720, 2400, 3200] },
+  f: { a: [850, 1300, 2900, 3900], e: [520, 2050, 2850, 3900], i: [350, 2450, 3050, 4000], o: [520, 950, 2850, 3800], u: [390, 800, 2750, 3800] },
+};
+const FORMANT_GAIN = [1, 0.55, 0.3, 0.14], FORMANT_BW = [90, 110, 150, 200];
+// 가사 대신 부르는 모음 순서 ("할렐루야" 느낌: 아-에-우-아)
+const LYRIC = { lead: ['a', 'e', 'u', 'a', 'o', 'a', 'i', 'a', 'e', 'u', 'a'], harm: ['a', 'u', 'a', 'o'], high: ['a', 'u', 'a', 'o'] };
 const IN_BY_ID = {};   // 입력 장비 id → 정의
 IN_DEVS.forEach(d => { IN_BY_ID[d.id] = d; });
 
@@ -197,6 +206,10 @@ class Engine {
 
   _mkNoise() {
     const ctx = this.ctx, n = ctx.sampleRate * 2;
+    // 성대음 파형: 배음이 톱니파보다 빨리 줄어들어(약 -10 dB/oct) 사람 목소리에 가까움
+    const H = 48, re = new Float32Array(H), im = new Float32Array(H);
+    for (let k = 1; k < H; k++) im[k] = 1 / Math.pow(k, 1.65);
+    this.glottal = ctx.createPeriodicWave(re, im);
     this.noise = ctx.createBuffer(1, n, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
@@ -373,12 +386,13 @@ class Engine {
   _mkVoiceChain(d) {
     const ctx = this.ctx, id = d.def.id;
     const bp = (f, q, g) => { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const o = this.gain(g); b.connect(o); o.connect(d.bus); return b; };
-    if (d.def.voice) {   // 사람 목소리: 성별에 따라 포먼트(모음 공명) 위치가 다름
+    if (d.def.voice) {   // 사람 목소리: 성대음 → 포먼트 필터 4개(모음에 따라 움직임)
       d.vin = this.gain(1);
-      const fm = d.def.voice === 'f' ? [[800, 7, 1], [1200, 8, 0.6], [2900, 9, 0.35]] : [[600, 7, 1], [1050, 8, 0.55], [2500, 9, 0.3]];
-      fm.forEach(([f, q, g]) => d.vin.connect(bp(f, q, g * 3)));
-      const air = ctx.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = d.def.voice === 'f' ? 500 : 380; const ag = this.gain(0.5);
-      d.vin.connect(air); air.connect(ag); ag.connect(d.bus);   // 몸통 저역
+      const v0 = VOWELS[d.def.voice].a;
+      d.formants = v0.map((f, i) => { const b = bp(f, f / FORMANT_BW[i], FORMANT_GAIN[i] * 4); d.vin.connect(b); return b; });
+      const body = ctx.createBiquadFilter(); body.type = 'lowpass'; body.frequency.value = d.def.voice === 'f' ? 420 : 300; const bg = this.gain(0.35);
+      d.vin.connect(body); body.connect(bg); bg.connect(d.bus);   // 가슴 울림(저역)
+      d.seed = Math.random();   // 사람마다 조금씩 다른 음정·타이밍
     } else if (id === 'egt') {
       d.vin = this.gain(3);
       const sh = ctx.createWaveShaper(); const cv = new Float32Array(257);
@@ -412,6 +426,7 @@ class Engine {
   }
   disconnectCh(chId, quiet) {
     const d = this.patch[chId]; if (!d) return;
+    this._fileStop(d);
     try { d.out.disconnect(); } catch (e) { /* 이미 분리됨 */ }
     if (d.shared) { try { d.shared.disconnect(d.bus); } catch (e) { /* 무시 */ } }
     delete this.patch[chId]; delete this.partIdx[chId]; this.ch[chId].srcType = null;
@@ -518,8 +533,19 @@ class Engine {
   _mkFx() { this.fx = new FxUnit(this); this.auxBus[3].connect(this.fx.input); }
 
   /* ---------- 시퀀서(가상 연주자) ---------- */
+  // 녹음 파일을 채널의 장비에 싣기 (피크를 맞춰 마이크 레벨로 들어가게 함)
+  setFile(chId, buffer, name) {
+    const d = this.patch[chId]; if (!d) return;
+    let pk = 0;
+    for (let c = 0; c < buffer.numberOfChannels; c++) { const x = buffer.getChannelData(c); for (let i = 0; i < x.length; i += 7) { const v = Math.abs(x[i]); if (v > pk) pk = v; } }
+    d.buffer = buffer; d.fileName = name; d.fileGain = this.gain(1 / Math.max(pk, 0.05)); d.fileGain.connect(d.bus);
+    if (this.playing) this._fileStart(d);
+  }
+  _fileStart(d) { this._fileStop(d); const s = this.ctx.createBufferSource(); s.buffer = d.buffer; s.loop = true; s.connect(d.fileGain); s.start(); d.src = s; }
+  _fileStop(d) { if (d.src) { try { d.src.stop(); } catch (e) { /* 무시 */ } d.src.disconnect(); d.src = null; } }
   setPlaying(on) {
     this.playing = on;
+    Object.values(this.patch).forEach(d => { if (d.buffer) { if (on) this._fileStart(d); else this._fileStop(d); } });
     clearInterval(this.timer);
     if (!on) return;
     this.step = 0; this.nextT = this.ctx.currentTime + 0.08;
@@ -531,7 +557,7 @@ class Engine {
     if (this.nextT < this.ctx.currentTime) this.nextT = this.ctx.currentTime + 0.02;   // 탭이 백그라운드였을 때 보정
     while (this.nextT < this.ctx.currentTime + 0.12) {
       const st = this.step, t = this.nextT;
-      Object.keys(this.patch).forEach(chId => this._play(this.patch[chId].def.id, this.patch[chId].vin, st, t, sd, 1, this.partNo(chId)));
+      Object.keys(this.patch).forEach(chId => this._play(this.patch[chId].def.id, this.patch[chId].vin, st, t, sd, 1, this.partNo(chId), this.patch[chId]));
       if (this.connOut.pc === 'usb') this._play('phone', this.usbGate, st, t, sd, 1);
       this.step = (st + 1) % 64; this.nextT += sd;
     }
@@ -586,22 +612,44 @@ class Engine {
       this._osc('sawtooth', mtof(root + iv), t, dur, g, iv * 0.7);
     });
   }
-  vVox(dest, t, m, dur, v) {
-    const ctx = this.ctx, g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + 0.07);
-    g.gain.setValueAtTime(v, t + dur - 0.08); g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    g.connect(dest);
-    const o = this._osc('sawtooth', mtof(m), t, dur, g);
-    const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 5.3; lg.gain.value = 14;
-    l.connect(lg); lg.connect(o.detune); l.start(t + 0.15); l.stop(t + dur + 0.05);   // 비브라토
+  // 노래하는 목소리: 성대음(글로털 파형) + 숨소리 → 포먼트 필터. 음정 끌어올림·비브라토·모음 변화 포함
+  vVox(d, t, m, dur, v, vowel) {
+    const ctx = this.ctx, g = ctx.createGain(), seed = d.seed || 0;
+    t += 0.004 + seed * 0.022;                                   // 사람마다 미세하게 다른 박자
+    const end = t + dur;
+    // 모음에 맞춰 포먼트 이동 (입 모양이 바뀌는 효과)
+    const fm = VOWELS[d.def.voice][vowel] || VOWELS[d.def.voice].a;
+    d.formants.forEach((b, i) => { b.frequency.setTargetAtTime(fm[i] * (1 + (seed - 0.5) * 0.06), t, 0.035); });
+    // 음량: 부드러운 시작 → 살짝 부풀었다가 → 끝에서 사라짐
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v * 0.85, t + 0.06);
+    g.gain.linearRampToValueAtTime(v, t + Math.min(0.35, dur * 0.5));
+    g.gain.setValueAtTime(v, Math.max(t + 0.07, end - 0.12)); g.gain.linearRampToValueAtTime(0.0001, end);
+    g.connect(d.vin);
+    const o = ctx.createOscillator(); o.setPeriodicWave(this.glottal); o.frequency.value = mtof(m);
+    // 음정: 약간 아래에서 끌어올리고(스쿱), 사람마다 몇 센트씩 다름
+    o.detune.setValueAtTime(-55 + (seed - 0.5) * 16, t); o.detune.setTargetAtTime((seed - 0.5) * 16, t, 0.035);
+    o.connect(g); o.start(t); o.stop(end + 0.05);
+    // 비브라토: 음을 길게 끌 때만 서서히 생김
+    if (dur > 0.45) {
+      const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 5 + seed * 1.2;
+      lg.gain.setValueAtTime(0, t + 0.22); lg.gain.linearRampToValueAtTime(22, t + 0.55);
+      l.connect(lg); lg.connect(o.detune); l.start(t); l.stop(end + 0.05);
+    }
+    // 숨소리(기식음)
+    const n = ctx.createBufferSource(); n.buffer = this.noise;
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 2500; nf.Q.value = 0.5;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(0.0001, t - 0.02 < 0 ? 0 : t - 0.02); ng.gain.linearRampToValueAtTime(v * 0.1, t + 0.03);
+    ng.gain.setTargetAtTime(v * 0.025, t + 0.05, 0.08); ng.gain.setTargetAtTime(0.0001, end - 0.05, 0.03);
+    n.connect(nf); nf.connect(ng); ng.connect(d.vin); n.start(Math.max(0, t - 0.02), Math.random()); n.stop(end + 0.15);
   }
   // 장비별 연주 패턴
   // variant: 같은 장비의 몇 번째 인스턴스인지 (보컬은 번호마다 다른 파트를 부름)
-  _play(id, dest, step, t, sd, v, variant = 0) {
+  _play(id, dest, step, t, sd, v, variant = 0, inst = null) {
     const bar = step >> 4, s = step & 15, ch = SONG.chords[bar], def = IN_BY_ID[id];
     if (def && def.voice) {
       const p = voicePart(def, variant);
-      p.notes.forEach(([st, len, m]) => { if (st === step) this.vVox(dest, t, m + p.shift, len * sd, v * 0.5); });
+      const vw = LYRIC[p.key];
+      p.notes.forEach(([st, len, m], i) => { if (st === step) this.vVox(inst, t, m + p.shift, len * sd, v * 0.5, vw[i % vw.length]); });
       return;
     }
     switch (id) {

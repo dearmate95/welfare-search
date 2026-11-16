@@ -320,7 +320,23 @@ document.addEventListener('pointerdown', e => { if (!e.target.closest('#menu') &
 
 async function plugIn(devId, chId) {
   if (inDef(devId).real && !(await E.enableRealMic())) { alert('마이크 사용 권한이 없어서 연결하지 못했습니다. 브라우저의 마이크 권한을 허용해 주세요.'); return; }
-  E.connectIn(devId, chId); refreshConn(); selectCh(chId);
+  let file = null;
+  if (inDef(devId).file) {   // 녹음 파일: 먼저 파일을 고르고 디코딩
+    file = await pickAudioFile(); if (!file) return;
+    try { file.buffer = await E.ctx.decodeAudioData(await file.arrayBuffer()); }
+    catch (e) { alert('이 파일은 재생할 수 없습니다. mp3, wav, m4a 같은 음원 파일을 골라 주세요.'); return; }
+  }
+  E.connectIn(devId, chId);
+  if (file) E.setFile(chId, file.buffer, file.name.replace(/\.[^.]+$/, ''));
+  refreshConn(); selectCh(chId);
+}
+// 음원 파일 선택 창 (취소하면 null)
+function pickAudioFile() {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'audio/*,.mp3,.wav,.m4a,.ogg,.flac';
+    inp.onchange = () => res(inp.files[0] || null); inp.addEventListener('cancel', () => res(null));
+    inp.click();
+  });
 }
 function canPlugIn(dev, ch) { return dev.type !== 'mic' || ch.mic; }
 // 장비 카드 메뉴: 여러 채널을 연달아 고를 수 있도록 선택 후에도 메뉴를 다시 띄움
@@ -383,7 +399,7 @@ function refreshConn() {
     e.jack.classList.toggle('plug', !!dev);
     e.jack.style.setProperty('--c', dev ? devEls[dev].color : 'transparent');
     const many = dev && E.devChannels(dev).length > 1;   // 같은 장비가 여러 개면 번호를 붙임
-    e.tape.textContent = dev ? (inDef(dev).tag || inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '')) + (many ? ' ' + (E.variant(c.id) + 1) : '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
+    e.tape.textContent = dev && E.patch[c.id].fileName ? E.patch[c.id].fileName.slice(0, 14) : dev ? (inDef(dev).tag || inDef(dev).name.replace(' 마이크', '').replace(' (DI 박스)', '')) + (many ? ' ' + (E.variant(c.id) + 1) : '') : (c.usb && state['ch15/16.lineusb'] ? 'USB 재생' : '');
   });
   OUT_JACKS.forEach(j => {
     const dev = E.jackDevice(j.id), b = jackEls[j.id];
